@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VectorKit · 纯前端矢量转换器</title>
+<style>
+:root{
+  --bg:#F5F6F8; --surface:#FFFFFF; --surface-2:#FAFBFC;
+  --border:#E4E6EA; --border-strong:#D3D6DC;
+  --text:#15171C; --muted:#6B7280; --faint:#9CA3AF;
+  --accent:#2563EB; --accent-hover:#1D4ED8; --accent-soft:#EFF4FF;
+  --ok:#0F7B4F; --ok-soft:#E8F6EF;
+  --warn:#8A5A00; --warn-soft:#FDF4E3;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.shell{max-width:1280px; margin:0 auto; padding:24px 28px 48px}
+
+header{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:22px}
+.brand{display:flex; align-items:center; gap:13px}
+.mark{
+  width:40px; height:40px; border-radius:11px; background:var(--text);
+  display:flex; align-items:center; justify-content:center; flex:none;
+}
+.brand h1{margin:0; font-size:17px; font-weight:600; letter-spacing:-.01em}
+.brand p{margin:1px 0 0; font-size:12.5px; color:var(--muted)}
+
+.chip{
+  display:inline-flex; align-items:center; gap:7px; padding:6px 12px;
+  border-radius:999px; font-size:12.5px; font-weight:500;
+  background:var(--warn-soft); color:var(--warn); border:1px solid transparent;
+}
+.chip.ready{background:var(--ok-soft); color:var(--ok)}
+.chip .dot{width:6px; height:6px; border-radius:50%; background:currentColor; flex:none}
+
+.tabs{display:flex; gap:4px; padding:4px; background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-bottom:20px; width:fit-content}
+.tab{
+  border:0; background:transparent; font:inherit; font-size:13.5px; color:var(--muted);
+  padding:8px 18px; border-radius:8px; cursor:pointer; transition:background .14s, color .14s;
+}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--text); color:#fff; font-weight:500}
+
+.panel{display:none; grid-template-columns:392px 1fr; gap:20px; align-items:start}
+.panel.active{display:grid}
+@media (max-width:1080px){ .panel.active{grid-template-columns:1fr} }
+
+.col{display:flex; flex-direction:column; gap:14px; min-width:0}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:16px}
+.card > h3{
+  margin:0 0 12px; font-size:12px; font-weight:600; color:var(--faint);
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.card > h3 + .hint{margin-top:-6px}
+
+.drop{
+  background:var(--surface); border:1.5px dashed var(--border-strong); border-radius:var(--r);
+  padding:26px 20px; text-align:center; cursor:pointer; transition:border-color .14s, background .14s;
+}
+.drop:hover,.drop.over{border-color:var(--accent); background:var(--accent-soft)}
+.drop .ico{margin-bottom:8px; opacity:.5}
+.drop .t1{font-size:13.5px; font-weight:500}
+.drop .t2{font-size:12px; color:var(--faint); margin-top:3px}
+
+.filetag{
+  display:flex; align-items:center; gap:10px; padding:10px 12px; margin-top:12px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px; font-size:12.5px;
+}
+.filetag .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500}
+.filetag .sz{color:var(--faint); flex:none; font-variant-numeric:tabular-nums}
+.filetag .rm{border:0; background:none; color:var(--faint); cursor:pointer; font-size:15px; padding:0 2px; line-height:1}
+.filetag .rm:hover{color:var(--text)}
+
+.seg{display:grid; grid-auto-flow:column; gap:3px; background:var(--surface-2); border:1px solid var(--border); padding:3px; border-radius:8px}
+.seg button{
+  border:0; background:transparent; font:inherit; font-size:12.5px; color:var(--muted);
+  padding:7px 4px; border-radius:6px; cursor:pointer; transition:background .14s, color .14s; white-space:nowrap;
+}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--surface); color:var(--text); font-weight:500; box-shadow:0 1px 2px rgba(16,24,40,.07)}
+
+.presets{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.preset{
+  text-align:left; border:1px solid var(--border); background:var(--surface); border-radius:9px;
+  padding:10px 12px; cursor:pointer; font:inherit; transition:border-color .14s, background .14s;
+}
+.preset:hover{border-color:var(--border-strong)}
+.preset.on{border-color:var(--accent); background:var(--accent-soft)}
+.preset .p1{font-size:12.5px; font-weight:500; display:block}
+.preset .p2{font-size:11.5px; color:var(--faint); display:block; margin-top:1px}
+
+.row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:11px}
+.row:last-child{margin-bottom:0}
+.row label{font-size:12.5px; color:var(--muted); flex:1; min-width:0}
+.row output{font-size:12px; color:var(--text); font-variant-numeric:tabular-nums; min-width:36px; text-align:right; flex:none}
+input[type=range]{width:132px; flex:none; accent-color:var(--accent)}
+input[type=number],input[type=text],select{
+  font:inherit; font-size:12.5px; padding:5px 8px; border:1px solid var(--border);
+  border-radius:7px; background:var(--surface); color:var(--text); width:96px;
+}
+select{width:auto}
+input:focus,select:focus{outline:2px solid var(--accent-soft); outline-offset:0; border-color:var(--accent)}
+input[type=color]{width:34px; height:26px; padding:1px; border:1px solid var(--border); border-radius:7px; background:var(--surface); cursor:pointer}
+
+.adv{border-top:1px solid var(--border); margin-top:14px; padding-top:12px; display:none}
+.adv.open{display:block}
+.toggle{
+  border:0; background:none; font:inherit; font-size:12.5px; color:var(--muted); cursor:pointer;
+  padding:0; display:flex; align-items:center; gap:5px;
+}
+.toggle:hover{color:var(--text)}
+.toggle .caret{transition:transform .16s; display:inline-block}
+.toggle.open .caret{transform:rotate(90deg)}
+
+.btn{
+  width:100%; border:0; border-radius:var(--r); padding:12px; font:inherit; font-size:13.5px;
+  font-weight:500; background:var(--accent); color:#fff; cursor:pointer; transition:background .14s;
+}
+.btn:hover:not(:disabled){background:var(--accent-hover)}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+.btn.ghost{background:var(--surface); color:var(--text); border:1px solid var(--border)}
+.btn.ghost:hover:not(:disabled){background:var(--surface-2); border-color:var(--border-strong)}
+.btn.sm{width:auto; padding:8px 14px; font-size:12.5px; border-radius:8px}
+.btnrow{display:flex; gap:8px}
+
+.stage{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  overflow:hidden; display:flex; flex-direction:column; min-height:560px;
+}
+.stage-head{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:11px 15px; border-bottom:1px solid var(--border); background:var(--surface-2);
+}
+.stage-head .ttl{font-size:12px; font-weight:600; color:var(--faint); letter-spacing:.06em; text-transform:uppercase}
+.stage-body{flex:1; display:flex; min-height:0}
+
+.pane{flex:1; min-width:0; display:flex; flex-direction:column}
+.pane + .pane{border-left:1px solid var(--border)}
+.pane-head{
+  padding:8px 14px; font-size:11.5px; color:var(--faint); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+}
+.canvas-wrap{
+  flex:1; display:flex; align-items:center; justify-content:center; padding:20px; min-height:300px;
+  background-color:#fff;
+  background-image:linear-gradient(45deg,#F1F2F4 25%,transparent 25%),linear-gradient(-45deg,#F1F2F4 25%,transparent 25%),
+                   linear-gradient(45deg,transparent 75%,#F1F2F4 75%),linear-gradient(-45deg,transparent 75%,#F1F2F4 75%);
+  background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0;
+  overflow:auto;
+}
+.canvas-wrap img{max-width:100%; max-height:420px; display:block; object-fit:contain}
+.canvas-wrap.dark{background-color:#1B1D21; background-image:none}
+
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border-top:1px solid var(--border)}
+.stat{background:var(--surface); padding:11px 14px}
+.stat .k{font-size:11.5px; color:var(--faint)}
+.stat .v{font-size:14px; font-weight:600; margin-top:1px; font-variant-numeric:tabular-nums}
+.stat .v small{font-size:11.5px; font-weight:400; color:var(--faint); margin-left:2px}
+
+.empty{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:var(--faint); font-size:13px; gap:9px; padding:48px 20px; text-align:center;
+}
+.empty .big{opacity:.35}
+.empty .sub{font-size:12px}
+
+.note{
+  font-size:12px; color:var(--muted); background:var(--surface-2); border:1px solid var(--border);
+  border-left:3px solid var(--border-strong); border-radius:8px; padding:10px 12px; line-height:1.55;
+}
+.note b{font-weight:600; color:var(--text)}
+.hint{font-size:12px; color:var(--faint); line-height:1.5}
+.busy{display:inline-block; width:12px; height:12px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-2px; margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bar{height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:10px}
+.bar i{display:block; height:100%; background:var(--accent); width:0; transition:width .25s}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <div class="mark">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l9 5v8l-9 5-9-5V8z"/><path d="M12 12l9-5M12 12v9M12 12L3 7"/>
+        </svg>
+      </div>
+      <div>
+        <h1>VectorKit</h1>
+        <p>纯前端矢量转换 · 文件从不离开你的浏览器</p>
+      </div>
+    </div>
+    <div class="chip" id="engineChip"><span class="dot"></span><span id="engineText">引擎加载中…</span></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="r2v">位图 → 矢量</button>
+    <button class="tab" data-tab="v2r">矢量 → 位图</button>
+    <button class="tab" data-tab="opt">优化 / 压缩</button>
+  </nav>
+
+  <section class="panel active" id="panel-r2v">
+    <div class="col">
+      <div class="card">
+        <h3>输入图片</h3>
+        <div class="drop" id="drop1">
+          <div class="ico">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+            </svg>
+          </div>
+          <div class="t1">点击选择，或把图片拖进来</div>
+          <div class="t2">PNG / JPG / WebP / GIF / BMP</div>
+        </div>
+        <div class="btnrow" style="margin-top:10px">
+          <button class="btn ghost sm" id="demo1">载入示例图</button>
+        </div>
+        <div id="file1"></div>
+      </div>
+
+      <div class="card">
+        <h3>引擎与预设</h3>
+        <div class="seg" id="engineSeg" style="margin-bottom:12px">
+          <button data-engine="vtracer" class="on">VTracer · 彩色</button>
+          <button data-engine="potrace">Potrace · 黑白</button>
+        </div>
+        <div class="presets" id="presets"></div>
+      </div>
+
+      <div class="card">
+        <h3>参数</h3>
+        <div id="params"></div>
+        <button class="toggle" id="advToggle" style="margin-top:12px"><span class="caret">›</span>高级参数</button>
+        <div class="adv" id="advBox"></div>
+      </div>
+
+      <button class="btn" id="run1" disabled>开始转换</button>
+    </div>
+
+    <div class="col">
+      <div class="stage">
+        <div class="stage-head">
+          <span class="ttl">预览对比</span>
+          <div class="btnrow">
+            <button class="btn ghost sm" id="dl1" disabled>下载 SVG</button>
+            <button class="btn ghost sm" id="copy1" disabled>复制源码</button>
+          </div>
+        </div>
+        <div class="stage-body" id="stage1">
+          <div class="empty">
+            <div class="big">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>
+              </svg>
+            </div>
+            <div>载入一张图片后开始转换</div>
+            <div class="sub">转换全程在本地完成，不产生任何网络请求</div>
+          </div>
+        </div>
+        <div class="stats hidden" id="stats1"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-v2r">
+    <div class="col">
+      <div class="card">
+        <h3>输入 SVG</h3>
+        <div class="drop" id="drop2">
+          <div class="ico">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+            </svg>
+          </div>
+          <div class="t1">点击选择，或把 SVG 拖进来</div>
+          <div class="t2">.svg / .svgz</div>
+        </div>
+        <div id="file2"></div>
+      </div>
+
+      <div class="card">
+        <h3>输出设置</h3>
+        <div class="row">
+          <label>格式</label>
+          <select id="outFormat">
+            <option value="image/png">PNG</option>
+            <option value="image/webp">WebP</option>
+            <option value="image/jpeg">JPEG</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>缩放</label>
+          <select id="outScale">
+            <option value="1">1×</option>
+            <option value="2" selected>2×</option>
+            <option value="3">3×</option>
+            <option value="4">4×</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>背景</label>
+          <select id="outBg">
+            <option value="transparent">透明</option>
+            <option value="#ffffff">白色</option>
+            <option value="#000000">黑色</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+        <div class="row hidden" id="bgColorRow">
+          <label>背景色</label>
+          <input type="color" id="outBgColor" value="#ffffff">
+        </div>
+        <div class="row">
+          <label>质量 <span class="hint" id="qHint">（仅 JPEG / WebP）</span></label>
+          <input type="range" id="outQuality" min="50" max="100" value="92">
+          <output id="outQualityV">92</output>
+        </div>
+      </div>
+
+      <button class="btn" id="run2" disabled>生成位图</button>
+    </div>
+
+    <div class="col">
+      <div class="stage">
+        <div class="stage-head">
+          <span class="ttl">渲染结果</span>
+          <button class="btn ghost sm" id="dl2" disabled>下载图片</button>
+        </div>
+        <div class="stage-body" id="stage2">
+          <div class="empty">
+            <div class="big">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>
+              </svg>
+            </div>
+            <div>载入 SVG 后生成位图</div>
+            <div class="sub">用浏览器原生渲染管线光栅化</div>
+          </div>
+        </div>
+        <div class="stats hidden" id="stats2"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-opt">
+    <div class="col">
+      <div class="card">
+        <h3>输入 SVG</h3>
+        <div class="drop" id="drop3">
+          <div class="ico">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+            </svg>
+          </div>
+          <div class="t1">点击选择，或把 SVG 拖进来</div>
+          <div class="t2">支持 .svg 与 .svgz</div>
+        </div>
+        <div id="file3"></div>
+      </div>
+
+      <div class="card">
+        <h3>优化选项</h3>
+        <label class="row"><input type="checkbox" id="optMeta" checked style="width:auto;flex:none"> <label for="optMeta">移除元数据与注释</label></label>
+        <label class="row"><input type="checkbox" id="optComment" checked style="width:auto;flex:none"> <label for="optComment">清理多余属性</label></label>
+        <label class="row"><input type="checkbox" id="optEmpty" checked style="width:auto;flex:none"> <label for="optEmpty">删除空容器</label></label>
+        <div class="row" style="margin-top:12px">
+          <label for="optPrec">坐标精度</label>
+          <input type="range" id="optPrec" min="0" max="6" value="2">
+          <output id="optPrecV">2</output>
+        </div>
+        <label class="row"><input type="checkbox" id="optGzip" style="width:auto;flex:none"> <label for="optGzip">同时输出 SVGZ（gzip 压缩）</label></label>
+      </div>
+
+      <button class="btn" id="run3" disabled>开始优化</button>
+
+      <div class="note">
+        <b>说明：</b>这里跑的是本 demo 内置的轻量优化器，处理常见的冗余标记与坐标精度。<b>SVGO</b> 的完整插件体系依赖 Node 环境，不适合直接搬进浏览器。
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="stage">
+        <div class="stage-head">
+          <span class="ttl">优化结果</span>
+          <div class="btnrow">
+            <button class="btn ghost sm" id="dl3" disabled>下载 SVG</button>
+            <button class="btn ghost sm" id="dl3z" disabled>下载 SVGZ</button>
+          </div>
+        </div>
+        <div class="stage-body" id="stage3">
+          <div class="empty">
+            <div class="big">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5z"/>
+              </svg>
+            </div>
+            <div>载入 SVG 后开始优化</div>
+            <div class="sub">全程本地处理</div>
+          </div>
+        </div>
+        <div class="stats hidden" id="stats3"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

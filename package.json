@@ -1,0 +1,17 @@
+{
+  "name": "vectorkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "纯前端矢量转换器：位图转 SVG、SVG 转位图、SVG 优化压缩，全部在浏览器本地完成",
+  "scripts": {
+    "dev": "node serve.mjs 5188",
+    "start": "node serve.mjs 5188",
+    "build:engine": "node build-vtracer.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@visioncortex/vtracer": "^1.0.0-alpha.4",
+    "esm-potrace-wasm": "^0.5.1"
+  }
+}
