@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "node serve.mjs 5188",
     "start": "node serve.mjs 5188",
-    "build:engine": "node build-vtracer.mjs"
+    "build": "node build.mjs",
+    "build:engine": "node build-vtracer.mjs",
+    "deploy": "node deploy.mjs"
   },
   "license": "MIT",
   "dependencies": {

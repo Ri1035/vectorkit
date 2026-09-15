@@ -81,8 +81,28 @@ vendor/
 
 ## 部署
 
-纯静态站点，把 `index.html`、`app.js`、`vendor/` 一起传到任意静态托管即可，
-无需构建步骤、无需服务端。注意 wasm 文件必须以 `application/wasm` 正确返回。
+### Cloudflare Pages（当前使用）
+
+```
+https://vectorkit.pages.dev
+```
+
+项目名 `vectorkit`，生产分支 `main`。设置好凭据后可一键发布：
+
+```bash
+export CLOUDFLARE_API_TOKEN=xxx
+export CLOUDFLARE_ACCOUNT_ID=xxx
+npm run deploy          # 等价于 build.mjs + wrangler pages deploy dist
+```
+
+### 其他静态托管
+
+纯静态站点，把 `dist/` 里的内容（`index.html`、`app.js`、`vendor/`）传上去即可，
+无需构建步骤、无需服务端。
+
+> ⚠️ `.wasm` 文件必须以 `Content-Type: application/wasm` 返回。
+> 若被当成 `application/octet-stream`，浏览器会因 MIME 校验拒绝加载引擎。
+> Cloudflare Pages / Netlify / Vercel 默认正确，自建 Nginx 需手动加 `application/wasm` 映射。
 
 ## 许可提醒
 
