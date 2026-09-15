@@ -503,6 +503,37 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
 
 .hint{font-size:12px;color:var(--text-3);line-height:1.5;font-weight:500}
 .hidden{display:none !important}
+
+/* ---------- 悬停提示浮窗 ---------- */
+.tip{
+  position:relative;display:inline-grid;place-items:center;flex:none;
+  width:17px;height:17px;margin-left:6px;border-radius:50%;
+  background:var(--surface-3);color:var(--text-3);
+  font-size:10.5px;font-weight:700;cursor:help;user-select:none;
+  box-shadow:var(--clay-1);
+  transition:color var(--ease),box-shadow var(--ease);
+}
+.tip:hover,.tip:focus{color:#5A3FC0;box-shadow:var(--clay-2)}
+.tip:focus-visible{outline:2px solid var(--c-violet);outline-offset:2px}
+.tip-pop{
+  position:absolute;bottom:calc(100% + 9px);left:50%;
+  transform:translateX(-50%) translateY(3px);
+  width:max-content;max-width:230px;padding:9px 12px;
+  background:var(--surface);border-radius:var(--r-md);
+  box-shadow:var(--clay-3);
+  font-size:11.5px;font-weight:500;line-height:1.55;color:var(--text-2);
+  text-align:left;white-space:normal;
+  opacity:0;pointer-events:none;z-index:70;
+  transition:opacity .16s ease,transform .16s ease;
+}
+.tip:hover .tip-pop,.tip:focus .tip-pop{
+  opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)
+}
+.tip.anchor-right .tip-pop{left:auto;right:-4px;transform:translateY(3px)}
+.tip.anchor-right:hover .tip-pop,.tip.anchor-right:focus .tip-pop{transform:translateY(0)}
+@media (prefers-color-scheme: dark){
+  .tip:hover,.tip:focus{color:var(--c-violet)}
+}
 .spinner{width:14px;height:14px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;flex:none}
 .btn.ghost .spinner{border-color:rgba(93,84,120,.25);border-top-color:var(--text-2)}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -618,13 +649,14 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             </div>
           </div>
           <div class="dev-row"><span class="k">开发者</span><span class="v">KOKA（Ri1035）</span></div>
+          <div class="dev-row"><span class="k">邮箱</span><span class="v"><a href="mailto:3321692436@qq.com" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--text-3)">3321692436@qq.com</a></span></div>
           <div class="dev-row"><span class="k">引擎</span><span class="v">VTracer · Potrace · resvg · SVGO</span></div>
           <div class="dev-row"><span class="k">隐私</span><span class="v">文件不上传，全部在本地处理</span></div>
-          <a class="dev-link" href="https://github.com/Ri1035/vectorkit" target="_blank" rel="noopener noreferrer">
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          <a class="dev-link" href="mailto:3321692436@qq.com">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7l8.5 6 8.5-6"/>
             </svg>
-            GitHub 仓库
+            联系我
           </a>
         </div>
       </div>
@@ -700,29 +732,36 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
       </div>
 
       <div class="card">
-        <label class="row" style="margin:0;cursor:pointer">
+        <div class="row" style="margin:0">
+          <label for="svgoOn" style="cursor:pointer;font-weight:600;color:var(--text)">输出时用 SVGO 优化路径</label>
+          <span class="tip" tabindex="0" aria-label="SVGO 优化说明">
+            ?
+            <span class="tip-pop" role="tooltip">精简冗余节点与坐标精度，通常可减小 30–70% 体积。导入 CorelDRAW 等老软件时可关闭，配合「导出兼容性」使用。</span>
+          </span>
           <input type="checkbox" id="svgoOn" checked>
-          <span style="flex:1;font-weight:600">输出时用 SVGO 优化路径</span>
-        </label>
-        <div class="hint" style="margin-top:8px">精简冗余节点与坐标精度，通常可减小 30–70% 体积</div>
+        </div>
         <div class="row" style="margin-top:16px;margin-bottom:0">
-          <label for="exportMode">导出兼容性</label>
+          <label for="exportMode">导出兼容性
+            <span class="tip" tabindex="0" aria-label="导出兼容性说明">
+              ?
+              <span class="tip-pop" role="tooltip">标准 SVG 体积更小；CorelDRAW X4 等老软件模式会改用绝对坐标并内联样式，避免导入后图形错位。</span>
+            </span>
+          </label>
           <select id="exportMode">
             <option value="modern">标准 SVG</option>
             <option value="legacy">CorelDRAW X4 等老软件</option>
           </select>
         </div>
-        <div class="hint" id="exportHint" style="margin-top:8px">
-          标准 SVG 体积更小；老软件模式会改用绝对坐标并内联样式，避免导入后图形错位
-        </div>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
-          <label class="row" style="margin:0;cursor:pointer">
+          <div class="row" style="margin:0">
+            <label for="epsTransparent" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="CMYK EPS 说明">
+              ?
+              <span class="tip-pop" role="tooltip">「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，背景即纸张／下承印物，不勾选则输出白底。EPS 无 alpha 通道，半透明会按不透明处理。</span>
+            </span>
             <input type="checkbox" id="epsTransparent">
-            <span style="flex:1;font-weight:600">CMYK EPS 透明底</span>
-          </label>
-          <div class="hint" id="epsHint" style="margin-top:8px">
-            「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，底色由纸张／下承印物决定，不勾选则输出白底
           </div>
+          <div class="hint hidden" id="epsStatus" style="margin-top:8px"></div>
         </div>
       </div>
 
@@ -1034,13 +1073,15 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <span style="flex:1;font-weight:600">同时输出 SVGZ（gzip）</span>
         </label>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
-          <label class="row" style="margin:0;cursor:pointer">
+          <div class="row" style="margin:0">
+            <label for="epsTransparent3" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="CMYK EPS 说明">
+              ?
+              <span class="tip-pop" role="tooltip">「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，背景即纸张／下承印物，不勾选则输出白底。</span>
+            </span>
             <input type="checkbox" id="epsTransparent3">
-            <span style="flex:1;font-weight:600">CMYK EPS 透明底</span>
-          </label>
-          <div class="hint" id="epsHint3" style="margin-top:8px">
-            「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，不勾选则输出白底
           </div>
+          <div class="hint hidden" id="epsStatus3" style="margin-top:8px"></div>
         </div>
       </div>
 

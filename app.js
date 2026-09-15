@@ -845,10 +845,6 @@ $('#svgoOn').addEventListener('change', () => { S1.lastKey = ''; });
 
 $('#exportMode').addEventListener('change', e => {
   S1.lastKey = '';
-  const legacy = e.target.value === 'legacy';
-  $('#exportHint').textContent = legacy
-    ? '输出绝对坐标路径并内联样式、跳过激进的路径合并，兼容 CorelDRAW X4 / Illustrator CS 等老软件'
-    : '标准 SVG 体积更小；老软件模式会改用绝对坐标并内联样式，避免导入后图形错位';
 });
 
 $('#viewToggle1').addEventListener('click', () => {
@@ -862,33 +858,36 @@ $('#dl1').addEventListener('click', () => {
 
 /* ---------- CMYK EPS 导出 ---------- */
 
-function exportCmykEps(svgText, fileName, hintId) {
-  const hint = $(hintId);
+function exportCmykEps(svgText, fileName, statusId, checkboxId) {
+  const status = $(statusId);
   try {
-    const transparent = hintId === '#epsHint' ? $('#epsTransparent').checked : $('#epsTransparent3').checked;
+    const transparent = $(checkboxId).checked;
     const { eps, warnings, shapes } = svgToCmykEps(svgText, {
       transparent,
       title: fileName
     });
+    if (!status) return;
+    status.classList.remove('hidden');
     if (!eps) {
-      if (hint) hint.textContent = '⚠ ' + warnings.join('；');
+      status.textContent = '⚠ ' + warnings.join('；');
       return;
     }
     download(new Blob([eps], { type: 'application/postscript' }), fileName);
-    if (hint) {
-      hint.textContent = '已导出 ' + shapes + ' 个图形'
-        + (transparent ? '（透明底）' : '（白底）')
-        + (warnings.length ? ' ⚠ ' + warnings.join('；') : '');
-    }
+    status.textContent = '已导出 ' + shapes + ' 个图形'
+      + (transparent ? '（透明底）' : '（白底）')
+      + (warnings.length ? ' ⚠ ' + warnings.join('；') : '');
   } catch (e) {
     console.error(e);
-    if (hint) hint.textContent = '⚠ EPS 导出失败：' + (e.message || e);
+    if (status) {
+      status.classList.remove('hidden');
+      status.textContent = '⚠ EPS 导出失败：' + (e.message || e);
+    }
   }
 }
 
 $('#dlEps').addEventListener('click', () => {
   if (!S1.svg) return;
-  exportCmykEps(S1.svg, (S1.outName || 'vector').replace(/\.svg$/, '') + '-cmyk.eps', '#epsHint');
+  exportCmykEps(S1.svg, (S1.outName || 'vector').replace(/\.svg$/, '') + '-cmyk.eps', '#epsStatus', '#epsTransparent');
 });
 
 $('#copy1').addEventListener('click', async () => {
@@ -1332,7 +1331,7 @@ $('#dl3z').addEventListener('click', () => {
 
 $('#dlEps3').addEventListener('click', () => {
   if (!S3.out) return;
-  exportCmykEps(S3.out, stripExt(S3.file ? S3.file.name : 'svg') + '-cmyk.eps', '#epsHint3');
+  exportCmykEps(S3.out, stripExt(S3.file ? S3.file.name : 'svg') + '-cmyk.eps', '#epsStatus3', '#epsTransparent3');
 });
 
 /* ============================ Tab4 · 去背景（纯色底） ============================
