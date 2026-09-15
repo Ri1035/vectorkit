@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#171327" media="(prefers-color-scheme: dark)">
 <title>KOKA-VectorKit · 纯前端矢量转换器</title>
 <meta property="og:title" content="KOKA-VectorKit · 纯前端矢量转换器">
-<meta property="og:description" content="浏览器本地完成位图转 SVG、SVG 转位图与 SVG 优化压缩。">
+<meta property="og:description" content="浏览器本地完成位图转 SVG、SVG 转位图、SVG 优化压缩与纯色背景去除，文件不上传任何服务器。">
 <meta name="author" content="KOKA (Ri1035)">
-<meta name="description" content="浏览器本地完成位图转 SVG、SVG 转位图与 SVG 优化压缩，文件不上传任何服务器。">
+<meta name="description" content="浏览器本地完成位图转 SVG、SVG 转位图、SVG 优化压缩与纯色背景去除，文件不上传任何服务器。">
 
 <link rel="icon" href="./public/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="./public/icon-light-32.png" sizes="32x32" type="image/png">
@@ -596,7 +596,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
       <div class="mark"><img src="./public/icon-light-64.png" alt=""></div>
       <div>
         <h1>KOKA-VectorKit</h1>
-        <p>纯前端矢量转换 · 文件从不离开浏览器</p>
+        <p>纯前端矢量转换与抠图 · 文件从不离开浏览器</p>
       </div>
     </div>
     <div class="top-actions">
@@ -614,7 +614,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             <img src="./public/icon-light-64.png" alt="" class="dev-avatar">
             <div>
               <b>KOKA-VectorKit</b>
-              <span>纯前端矢量转换器</span>
+              <span>纯前端矢量转换 / 抠图</span>
             </div>
           </div>
           <div class="dev-row"><span class="k">开发者</span><span class="v">KOKA（Ri1035）</span></div>
@@ -634,15 +634,19 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="r2v" role="tab" aria-selected="true">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 14h7v7h-7z"/><path d="M14 3h7v7h-7z" opacity=".45"/><path d="M3 14h7v7H3z" opacity=".45"/></svg>
-      位图转矢量
+      位图→矢量
     </button>
     <button class="tab" data-tab="v2r" role="tab" aria-selected="false">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.6" cy="8.6" r="1.7"/><path d="M21 15.5l-4.6-4.6L6.5 21"/></svg>
-      矢量转位图
+      矢量→位图
+    </button>
+    <button class="tab" data-tab="matte" role="tab" aria-selected="false">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z" opacity=".45"/><path d="M9.5 14.5L6 11l2-2 3.5 3.5"/><path d="M14.5 9.5L18 13l-2 2-3.5-3.5"/><path d="M11 8.2l4.8 4.8"/></svg>
+      去背景
     </button>
     <button class="tab" data-tab="opt" role="tab" aria-selected="false">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5.5 8.2L12 3l6.5 5.2"/><path d="M5.5 15.8L12 21l6.5-5.2"/></svg>
-      优化压缩
+      优化
     </button>
   </nav>
 
@@ -843,6 +847,137 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           </div>
         </div>
         <div class="stats hidden" id="stats2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 去背景 ============ -->
+  <section class="panel" id="panel-matte">
+    <div class="col">
+      <div class="card">
+        <h3>输入图片</h3>
+        <button class="drop" id="drop4" type="button">
+          <div class="ico">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+            </svg>
+          </div>
+          <div class="t1">点击选择，或拖拽图片到此处</div>
+          <div class="t2">PNG · JPG · WebP · GIF · BMP</div>
+        </button>
+        <div class="btnrow" style="margin-top:12px">
+          <button class="btn ghost sm" id="demo4" type="button">载入示例图</button>
+        </div>
+        <div id="file4"></div>
+      </div>
+
+      <div class="card">
+        <h3>背景色</h3>
+        <div class="seg" id="matteKeyMode" style="margin-bottom:14px">
+          <button data-mode="auto" class="on" type="button">自动检测</button>
+          <button data-mode="pick" type="button">手动指定</button>
+        </div>
+        <div class="row" id="matteKeyRow" style="display:none">
+          <label for="matteKey">取样颜色</label>
+          <input type="color" id="matteKey" value="#ffffff">
+        </div>
+        <div class="row" id="matteAutoRow">
+          <span style="flex:1;font-size:12.5px;color:var(--text-2)">检测到的背景色</span>
+          <span id="matteSwatch" style="width:34px;height:26px;border-radius:var(--r-sm);background:#fff;box-shadow:var(--clay-pressed);flex:none"></span>
+          <output id="matteKeyV">—</output>
+        </div>
+        <div class="hint">自动检测取图像四边多个采样点的中位数，对纯色背景准确率高</div>
+      </div>
+
+      <div class="card">
+        <h3>抠图参数</h3>
+        <div class="row">
+          <label for="mTol">颜色容差</label>
+          <input type="range" id="mTol" min="0" max="120" value="30">
+          <output id="mTolV">30</output>
+        </div>
+        <div class="row">
+          <label for="mSoft">边缘软度</label>
+          <input type="range" id="mSoft" min="0" max="60" value="18">
+          <output id="mSoftV">18</output>
+        </div>
+        <div class="row">
+          <label for="mErode">边缘收缩 <span class="hint">去白边</span></label>
+          <input type="range" id="mErode" min="0" max="3" value="1">
+          <output id="mErodeV">1</output>
+        </div>
+        <div class="row">
+          <label for="mFeather">羽化</label>
+          <input type="range" id="mFeather" min="0" max="4" value="1">
+          <output id="mFeatherV">1</output>
+        </div>
+        <div class="row">
+          <label for="mDespill">去色溢出</label>
+          <input type="range" id="mDespill" min="0" max="100" value="60">
+          <output id="mDespillV">60</output>
+        </div>
+        <div class="row">
+          <label for="mDespeckle">去噪强度</label>
+          <input type="range" id="mDespeckle" min="0" max="200" value="12">
+          <output id="mDespeckleV">12</output>
+        </div>
+        <button class="toggle" id="mReset" type="button" style="margin-top:14px">恢复默认参数</button>
+      </div>
+
+      <div class="card">
+        <h3>输出</h3>
+        <div class="row">
+          <label for="mFormat">格式</label>
+          <select id="mFormat">
+            <option value="image/png">PNG（无损）</option>
+            <option value="image/webp">WebP（更小）</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="mBg">输出底</label>
+          <select id="mBg">
+            <option value="transparent">透明</option>
+            <option value="#ffffff">白色</option>
+            <option value="#000000">黑色</option>
+            <option value="checker">保留原图</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+        <div class="row hidden" id="mBgColorRow">
+          <label for="mBgColor">底色</label>
+          <input type="color" id="mBgColor" value="#ffffff">
+        </div>
+        <div class="hint" style="margin-top:2px">透明底建议选 PNG 或 WebP；JPG 不支持透明</div>
+      </div>
+
+      <button class="btn" id="run4" type="button" disabled>开始去背景</button>
+    </div>
+
+    <div class="col">
+      <div class="stage">
+        <div class="stage-head">
+          <span class="ttl">抠图结果</span>
+          <div class="btnrow">
+            <button class="btn ghost sm" id="viewToggle4" type="button" style="display:none">只看结果</button>
+            <button class="btn ghost sm" id="dl4" type="button" disabled>下载图片</button>
+          </div>
+        </div>
+        <div class="progress" id="prog4" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="progress-track"><i class="progress-fill"></i></div>
+          <span class="progress-label">准备中</span>
+        </div>
+        <div class="stage-body" id="stage4">
+          <div class="empty">
+            <div class="big">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16v16H4z" opacity=".45"/><path d="M9.5 14.5L6 11l2-2 3.5 3.5"/><path d="M14.5 9.5L18 13l-2 2-3.5-3.5"/>
+              </svg>
+            </div>
+            <div>载入一张图片后去除背景</div>
+            <div class="sub">按颜色阈值在本地完成，适合白底商品图、Logo、印章等纯色背景</div>
+          </div>
+        </div>
+        <div class="stats hidden" id="stats4"></div>
       </div>
     </div>
   </section>

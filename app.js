@@ -2,6 +2,7 @@
  * 引擎在主线程按需加载（见下方「引擎（懒加载）」章节） */
 
 import { toLegacySvg } from './svg-compat.js';
+import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -375,7 +376,8 @@ function createProgress(id) {
 const PROG = {
   1: createProgress('prog1'),
   2: createProgress('prog2'),
-  3: createProgress('prog3')
+  3: createProgress('prog3'),
+  4: createProgress('prog4')
 };
 
 /* ============================ Tab 切换 ============================ */
@@ -1290,6 +1292,290 @@ $('#dl3').addEventListener('click', () => {
 });
 $('#dl3z').addEventListener('click', () => {
   if (S3.gz && S3.file) download(S3.gz, stripExt(S3.file.name) + '.min.svgz');
+});
+
+/* ============================ Tab4 · 去背景（纯色底） ============================
+ * 走颜色阈值 + 软边 + 去色溢出的经典抠图算法（见 matte.js），不依赖 AI 模型：
+ * 对白底商品图 / Logo / 印章这类纯色背景，速度快且边缘比 AI 更干净可控。
+ */
+
+const S4 = {
+  imageData: null, w: 0, h: 0, file: null, srcUrl: '',
+  outUrl: '', outBlob: null, ext: 'png', ratio: 0,
+  singleView: false, keyMode: 'auto', detected: null
+};
+
+const hexToRgb = (hex) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return [255, 255, 255];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const rgbToHex = ([r, g, b]) =>
+  '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+
+function imageDataToCanvas(imageData) {
+  const c = document.createElement('canvas');
+  c.width = imageData.width;
+  c.height = imageData.height;
+  c.getContext('2d').putImageData(imageData, 0, 0);
+  return c;
+}
+
+function collectMatteOpts() {
+  return {
+    key: S4.keyMode === 'pick' ? hexToRgb($('#matteKey').value) : null,
+    tolerance: +$('#mTol').value,
+    softness: +$('#mSoft').value,
+    erode: +$('#mErode').value,
+    feather: +$('#mFeather').value,
+    despill: +$('#mDespill').value / 100,
+    despeckle: +$('#mDespeckle').value
+  };
+}
+
+/** 自动检测背景色并刷新色块显示 */
+function detectKey() {
+  if (!S4.imageData) return;
+  S4.detected = detectBackgroundColor(S4.imageData);
+  const hex = rgbToHex(S4.detected);
+  $('#matteSwatch').style.background = hex;
+  $('#matteKeyV').textContent = hex.toUpperCase();
+  if (S4.keyMode === 'pick') $('#matteKey').value = hex;
+}
+
+function renderStage4() {
+  const stage = $('#stage4');
+  stage.innerHTML = `
+    <div class="pane" data-pane="src">
+      <div class="pane-head"><span>原图</span><span class="hint"></span></div>
+      <div class="canvas-wrap"><img id="imgSrc4" alt="原图"></div>
+    </div>
+    <div class="pane" data-pane="out">
+      <div class="pane-head"><span>去背景结果</span><span class="hint" id="hint4">等待处理</span></div>
+      <div class="canvas-wrap" id="wrap4">
+        ${emptyState('', '点击「开始去背景」', '')}
+      </div>
+    </div>`;
+  $('#imgSrc4').src = S4.srcUrl;
+  applyMatteView();
+}
+
+function applyMatteView() {
+  const stage = $('#stage4');
+  if (!stage.querySelector('[data-pane]')) return;
+  stage.querySelector('[data-pane="src"]').style.display = S4.singleView ? 'none' : '';
+  $('#viewToggle4').style.display = '';
+  $('#viewToggle4').textContent = S4.singleView ? '查看原图' : '只看结果';
+}
+
+function clearMatteResult() {
+  revoke(S4.outUrl);
+  S4.outUrl = ''; S4.outBlob = null;
+  $('#dl4').disabled = true;
+  const hint = $('#hint4');
+  if (hint) hint.textContent = '等待处理';
+  const wrap = $('#wrap4');
+  if (wrap) wrap.innerHTML = emptyState('', '点击「开始去背景」', '');
+  $('#stats4').classList.add('hidden');
+  PROG[4].reset();
+}
+
+/** 检测浏览器是否真的支持该格式编码（不支持时 toDataURL 会静默退回 PNG） */
+const FMT_SUPPORT = {};
+function supportsFormat(mime) {
+  if (mime in FMT_SUPPORT) return FMT_SUPPORT[mime];
+  let ok = false;
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 1;
+    ok = c.toDataURL(mime).indexOf('data:' + mime) === 0;
+  } catch { ok = false; }
+  return (FMT_SUPPORT[mime] = ok);
+}
+
+/** 按输出底设置把抠出的主体合成到画布上 */
+function composeMatte(imageData) {
+  const w = S4.w, h = S4.h;
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  const bgVal = $('#mBg').value;
+
+  if (bgVal === 'checker') {
+    // 保留原图作为底，方便对照检查边缘
+    ctx.drawImage(imageDataToCanvas(S4.imageData), 0, 0);
+  } else if (bgVal !== 'transparent') {
+    ctx.fillStyle = bgVal === 'custom' ? $('#mBgColor').value : bgVal;
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.drawImage(imageDataToCanvas(imageData), 0, 0);
+  return out;
+}
+
+async function processMatte() {
+  if (!S4.imageData) return;
+  const restore = busy($('#run4'), '处理中…');
+  const t0 = performance.now();
+  PROG[4].start('分析背景');
+
+  try {
+    await yieldFrame();
+    const opts = collectMatteOpts();
+
+    PROG[4].stage(22, '检测背景色');
+    await yieldFrame();
+    if (S4.keyMode === 'auto') detectKey();
+
+    PROG[4].stage(40, '生成蒙版');
+    await yieldFrame();
+    const { imageData, key } = removeSolidBackground(S4.imageData, opts);
+    S4.ratio = opaqueRatio(imageData);
+
+    PROG[4].stage(78, '合成输出');
+    await yieldFrame();
+    const canvas = composeMatte(imageData);
+
+    // 浏览器不支持 WebP 编码时静默回退 PNG，避免产出「扩展名 .webp 实为 PNG」的文件
+    let format = $('#mFormat').value;
+    if (!supportsFormat(format)) format = 'image/png';
+    S4.ext = format === 'image/webp' ? 'webp' : 'png';
+    const blob = await canvasToBlob(canvas, format, 0.95) || await canvasToBlob(canvas, 'image/png');
+    if (!blob) throw new Error('图片编码失败');
+
+    revoke(S4.outUrl);
+    S4.outBlob = blob;
+    S4.outUrl = URL.createObjectURL(blob);
+
+    const ms = performance.now() - t0;
+    const wrap = $('#wrap4');
+    wrap.innerHTML = '<img id="imgOut4" alt="去背景结果">';
+    $('#imgOut4').src = S4.outUrl;
+    $('#hint4').textContent = '背景 ' + rgbToHex(key).toUpperCase();
+    $('#dl4').disabled = false;
+
+    setStats('stats4', [
+      ['输出体积', fmtBytes(blob.size)],
+      ['尺寸', `${S4.w}×${S4.h}`],
+      ['主体占比', Math.round(S4.ratio * 100) + '', '%'],
+      ['耗时', Math.round(ms) + '', 'ms']
+    ]).classList.remove('hidden');
+
+    PROG[4].done('完成 · ' + Math.round(ms) + 'ms');
+  } catch (e) {
+    console.error(e);
+    PROG[4].fail(e.message || '处理失败');
+  } finally {
+    restore();
+  }
+}
+
+async function loadMatteFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    PROG[4].fail('请选择图片文件');
+    return;
+  }
+  try {
+    const { imageData, w, h } = await loadRaster(file);
+    S4.imageData = imageData;
+    S4.w = w; S4.h = h;
+    S4.file = file;
+    const pngBlob = await canvasToBlob(imageDataToCanvas(imageData), 'image/png');
+    S4.srcUrl = makeUrl(S4.srcUrl, pngBlob || new Blob(), 'image/png');
+
+    detectKey();
+    renderStage4();
+    fileTag($('#file4'), file, () => {
+      S4.imageData = null; S4.file = null;
+      revoke(S4.srcUrl); S4.srcUrl = '';
+      $('#file4').innerHTML = '';
+      $('#run4').disabled = true;
+      $('#stage4').innerHTML = emptyState('', '载入一张图片后去除背景', '');
+      $('#viewToggle4').style.display = 'none';
+      clearMatteResult();
+    });
+    $('#run4').disabled = false;
+    clearMatteResult();
+  } catch (e) {
+    console.error(e);
+    PROG[4].fail('图片读取失败');
+  }
+}
+
+wireDrop($('#drop4'), loadMatteFile);
+
+$('#matteKeyMode').addEventListener('click', e => {
+  const b = e.target.closest('button[data-mode]');
+  if (!b) return;
+  S4.keyMode = b.dataset.mode;
+  $$('#matteKeyMode button').forEach(x => x.classList.toggle('on', x === b));
+  const manual = S4.keyMode === 'pick';
+  $('#matteKeyRow').style.display = manual ? '' : 'none';
+  $('#matteAutoRow').style.display = manual ? 'none' : '';
+  if (manual && S4.detected) $('#matteKey').value = rgbToHex(S4.detected);
+});
+
+/* 滑块数值回显 */
+[['mTol', 'mTolV'], ['mSoft', 'mSoftV'], ['mErode', 'mErodeV'],
+ ['mFeather', 'mFeatherV'], ['mDespill', 'mDespillV'], ['mDespeckle', 'mDespeckleV']]
+  .forEach(([id, out]) => {
+    const el = $('#' + id), o = $('#' + out);
+    const sync = () => { o.textContent = el.value; };
+    el.addEventListener('input', sync);
+    sync();
+  });
+
+$('#mReset').addEventListener('click', () => {
+  const defs = { mTol: 30, mSoft: 18, mErode: 1, mFeather: 1, mDespill: 60, mDespeckle: 12 };
+  Object.entries(defs).forEach(([id, v]) => {
+    $('#' + id).value = v;
+    $('#' + id).dispatchEvent(new Event('input'));
+  });
+});
+
+$('#mBg').addEventListener('change', () => {
+  $('#mBgColorRow').classList.toggle('hidden', $('#mBg').value !== 'custom');
+});
+
+$('#run4').addEventListener('click', processMatte);
+
+$('#viewToggle4').addEventListener('click', () => {
+  S4.singleView = !S4.singleView;
+  applyMatteView();
+});
+
+$('#dl4').addEventListener('click', () => {
+  if (!S4.outBlob) return;
+  const base = S4.file ? stripExt(S4.file.name) : 'image';
+  download(S4.outBlob, base + '-nobg.' + S4.ext);
+});
+
+/** 去背景示例图：白底 + 彩色主体，便于直接看到效果 */
+function makeMatteDemo() {
+  const S = 480;
+  const c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, S, S);
+
+  // 主体：橙色圆 + 蓝色圆角方块 + 深色三角 + 绿色描边圆环
+  ctx.fillStyle = '#F97316';
+  ctx.beginPath(); ctx.arc(170, 175, 100, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2563EB';
+  roundRect(ctx, 245, 205, 155, 150, 26); ctx.fill();
+  ctx.fillStyle = '#111827';
+  ctx.beginPath(); ctx.moveTo(120, 400); ctx.lineTo(205, 265); ctx.lineTo(290, 400); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#10B981';
+  ctx.lineWidth = 16;
+  ctx.beginPath(); ctx.arc(330, 120, 58, 0, Math.PI * 2); ctx.stroke();
+  return c;
+}
+
+$('#demo4').addEventListener('click', async () => {
+  const c = makeMatteDemo();
+  const blob = await canvasToBlob(c, 'image/png');
+  await loadMatteFile(new File([blob], 'demo-product.png', { type: 'image/png' }));
 });
 
 /* ============================ 启动 ============================ */

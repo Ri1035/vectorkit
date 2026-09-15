@@ -1,6 +1,6 @@
 {
   "name": "vectorkit",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "纯前端矢量转换器：位图转 SVG、SVG 转位图、SVG 优化压缩，全部在浏览器本地完成",
@@ -13,6 +13,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@resvg/resvg-wasm": "^2.6.2",
     "@visioncortex/vtracer": "^1.0.0-alpha.4",
     "esm-potrace-wasm": "^0.5.1",
