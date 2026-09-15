@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#EFEAF8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171327" media="(prefers-color-scheme: dark)">
-<title>VectorKit · 纯前端矢量转换器</title>
+<title>KOKA-VectorKit · 纯前端矢量转换器</title>
+<meta property="og:title" content="KOKA-VectorKit · 纯前端矢量转换器">
+<meta property="og:description" content="浏览器本地完成位图转 SVG、SVG 转位图与 SVG 优化压缩。">
+<meta name="author" content="KOKA (Ri1035)">
 <meta name="description" content="浏览器本地完成位图转 SVG、SVG 转位图与 SVG 优化压缩，文件不上传任何服务器。">
 
 <link rel="icon" href="./public/favicon.svg" type="image/svg+xml">
@@ -215,6 +218,36 @@ button{font:inherit;color:inherit}
   margin:0 0 14px;font-size:11.5px;font-weight:700;color:var(--text-3);
   letter-spacing:.08em;text-transform:uppercase;
 }
+
+/* ---------- 可折叠卡片 ---------- */
+.card-head{
+  display:flex;align-items:center;gap:10px;width:100%;
+  background:none;border:0;cursor:pointer;padding:0;text-align:left;
+  font:inherit;color:inherit;
+  border-radius:var(--r-sm);
+}
+.card-head h3{
+  margin:0;flex:none;font-size:11.5px;font-weight:700;color:var(--text-3);
+  letter-spacing:.08em;text-transform:uppercase;
+  transition:color var(--ease);
+}
+.card-head:hover h3{color:var(--text-2)}
+.card-sum{
+  flex:1;min-width:0;text-align:right;
+  font-size:12px;font-weight:600;color:var(--text-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.card-head .caret{
+  flex:none;font-size:13px;color:var(--text-3);
+  transition:transform var(--ease);transform:rotate(90deg);display:inline-block;
+}
+.collapsible.open .card-head .caret{transform:rotate(-90deg)}
+.card-head:focus-visible{outline:2px solid var(--c-violet);outline-offset:3px}
+.card-body{
+  max-height:0;overflow:hidden;opacity:0;
+  transition:max-height .28s ease,opacity .2s ease,margin-top .28s ease;
+}
+.collapsible.open .card-body{max-height:1800px;opacity:1;margin-top:14px}
 
 /* ---------- 上传区 ---------- */
 .drop{
@@ -471,6 +504,46 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
 @keyframes spin{to{transform:rotate(360deg)}}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 
+/* ---------- 页脚（开发者信息） ---------- */
+.foot{
+  margin-top:36px;padding:22px 24px;
+  background:var(--surface);border-radius:var(--r-2xl);
+  box-shadow:var(--clay-2);
+  display:flex;align-items:center;justify-content:space-between;
+  gap:20px;flex-wrap:wrap;
+}
+.foot-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.foot-logo{
+  width:42px;height:42px;border-radius:var(--r-md);flex:none;
+  background:linear-gradient(180deg,#EFE8FF,#DCCFFB);
+  box-shadow:var(--clay-violet);padding:6px;
+}
+@media (prefers-color-scheme: dark){
+  .foot-logo{background:linear-gradient(180deg,#4A3A7A,#382C60)}
+}
+.foot-brand b{display:block;font-size:13.5px;font-weight:700;line-height:1.35}
+.foot-brand span{display:block;font-size:12px;color:var(--text-3);font-weight:500}
+.foot-links{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.foot-item{
+  font-size:12.5px;font-weight:600;color:var(--text-2);
+  padding:8px 14px;border-radius:var(--r-pill);
+  background:var(--surface-2);box-shadow:var(--clay-1);
+  text-decoration:none;white-space:nowrap;
+  transition:box-shadow var(--ease),transform var(--ease),color var(--ease);
+}
+a.foot-item:hover{color:var(--text);transform:translateY(-2px);box-shadow:var(--clay-2)}
+a.foot-item:active{transform:translateY(1px);box-shadow:var(--clay-pressed)}
+.foot-item.plain{background:none;box-shadow:none;color:var(--text-3);padding:8px 4px;cursor:default}
+.foot-note{
+  flex-basis:100%;font-size:12px;color:var(--text-3);font-weight:500;
+  padding-top:4px;border-top:1px dashed var(--line);
+}
+@media (max-width:767px){
+  .foot{padding:18px;gap:14px;margin-top:26px;flex-direction:column;align-items:flex-start}
+  .foot-links{width:100%}
+  .foot-item{font-size:12px;padding:7px 12px}
+}
+
 /* ---------- 可访问性 ---------- */
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.01ms !important;transition-duration:.01ms !important}
@@ -483,7 +556,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
 </style>
 </head>
 <body>
-<h2 class="sr-only">VectorKit 纯前端矢量转换器，提供位图转矢量、矢量转位图与 SVG 优化压缩</h2>
+<h2 class="sr-only">KOKA-VectorKit 纯前端矢量转换器，提供位图转矢量、矢量转位图与 SVG 优化压缩</h2>
 
 <div class="shell">
 
@@ -491,7 +564,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
     <div class="brand">
       <div class="mark"><img src="./public/icon-dark-64.png" alt=""></div>
       <div>
-        <h1>VectorKit</h1>
+        <h1>KOKA-VectorKit</h1>
         <p>纯前端矢量转换 · 文件从不离开浏览器</p>
       </div>
     </div>
@@ -534,20 +607,32 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         <div id="file1"></div>
       </div>
 
-      <div class="card">
-        <h3>引擎与预设</h3>
-        <div class="seg" id="engineSeg" style="margin-bottom:14px">
-          <button data-engine="vtracer" class="on" type="button" disabled>VTracer · 彩色</button>
-          <button data-engine="potrace" type="button" disabled>Potrace · 黑白</button>
+      <div class="card collapsible" id="foldEngine">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldEngineBody">
+          <h3>引擎与预设</h3>
+          <span class="card-sum" id="sumEngine">VTracer · Logo 图标</span>
+          <span class="caret">›</span>
+        </button>
+        <div class="card-body" id="foldEngineBody">
+          <div class="seg" id="engineSeg" style="margin-bottom:14px">
+            <button data-engine="vtracer" class="on" type="button" disabled>VTracer · 彩色</button>
+            <button data-engine="potrace" type="button" disabled>Potrace · 黑白</button>
+          </div>
+          <div class="presets" id="presets"></div>
         </div>
-        <div class="presets" id="presets"></div>
       </div>
 
-      <div class="card">
-        <h3>参数</h3>
-        <div id="params"></div>
-        <button class="toggle" id="advToggle" type="button" style="margin-top:15px"><span class="caret">›</span>高级参数</button>
-        <div class="adv" id="advBox"></div>
+      <div class="card collapsible" id="foldParams">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldParamsBody">
+          <h3>参数</h3>
+          <span class="card-sum" id="sumParams"></span>
+          <span class="caret">›</span>
+        </button>
+        <div class="card-body" id="foldParamsBody">
+          <div id="params"></div>
+          <button class="toggle" id="advToggle" type="button" style="margin-top:15px"><span class="caret">›</span>高级参数</button>
+          <div class="adv" id="advBox"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -766,6 +851,24 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
       </div>
     </div>
   </section>
+
+  <footer class="foot">
+    <div class="foot-brand">
+      <img src="./public/icon-dark-64.png" alt="" class="foot-logo">
+      <div>
+        <b>KOKA-VectorKit</b>
+        <span>纯前端矢量转换器 · 文件从不离开浏览器</span>
+      </div>
+    </div>
+    <div class="foot-links">
+      <span class="foot-item plain">开发者 KOKA（Ri1035）</span>
+      <a class="foot-item" href="https://github.com/Ri1035/vectorkit" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+      <a class="foot-item" href="https://github.com/Ri1035" target="_blank" rel="noopener noreferrer">开发者主页</a>
+    </div>
+    <div class="foot-note">
+      引擎：VTracer · Potrace · resvg · SVGO ｜ 位图转矢量、矢量转位图、SVG 优化压缩全部在本地完成，不上传任何文件
+    </div>
+  </footer>
 
 </div>
 <script type="module" src="./app.js"></script>

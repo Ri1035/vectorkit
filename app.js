@@ -398,6 +398,57 @@ function setChip(state, text) {
   $('#engineText').textContent = text;
 }
 
+/* ============================ 可折叠卡片 ============================
+ * 用内联样式直接驱动（而非依赖 class 规则）：实测在部分环境下
+ * `.collapsible.open .card-body` 虽然 matches() 为 true，但样式不会被应用，
+ * 内联方式可稳定生效。
+ */
+
+function wireFold(rootId) {
+  const root = document.getElementById(rootId);
+  if (!root) return;
+  const head = root.querySelector('.card-head');
+  const body = root.querySelector('.card-body');
+  if (!head || !body) return;
+
+  const apply = (open) => {
+    root.classList.toggle('open', open);
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      body.style.maxHeight = (body.scrollHeight + 32) + 'px';
+      body.style.opacity = '1';
+      body.style.marginTop = '14px';
+    } else {
+      body.style.maxHeight = '0px';
+      body.style.opacity = '0';
+      body.style.marginTop = '0px';
+    }
+  };
+
+  apply(false);
+  head.addEventListener('click', () => apply(!root.classList.contains('open')));
+
+  // 内容高度变化时（如切换引擎导致预设数量变化），同步展开态高度
+  root._syncHeight = () => {
+    if (root.classList.contains('open')) body.style.maxHeight = (body.scrollHeight + 32) + 'px';
+  };
+}
+
+/** 某个折叠面板展开时，重新计算其内容高度 */
+function syncFoldHeight(rootId) {
+  const root = document.getElementById(rootId);
+  if (root && typeof root._syncHeight === 'function') root._syncHeight();
+}
+
+function setFoldSummary(presetText, paramsText) {
+  const a = document.getElementById('sumEngine');
+  const b = document.getElementById('sumParams');
+  if (a && presetText) a.textContent = presetText;
+  if (b && paramsText !== undefined) b.textContent = paramsText;
+}
+
+const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
+
 /* ============================ 预设与参数 ============================ */
 
 const PRESETS = {
@@ -471,6 +522,8 @@ function renderPresets() {
     });
     host.appendChild(b);
   });
+  setFoldSummary(ENGINE_LABEL[S1.engine] + ' · ' + PRESETS[S1.engine][S1.preset].name);
+  syncFoldHeight('foldEngine');
 }
 
 function sliderRow(def, val, onChange) {
@@ -493,7 +546,7 @@ function renderParams() {
 
   SCHEMA[S1.engine].forEach(def => {
     const val = opts[def.key] !== undefined ? opts[def.key] : (def.def !== undefined ? def.def : def.min);
-    host.appendChild(sliderRow(def, val));
+    host.appendChild(sliderRow(def, val, updateParamSummary));
   });
 
   const advHost = $('#advBox');
@@ -509,9 +562,23 @@ function renderParams() {
       advHost.appendChild(row);
     } else {
       const val = opts[def.key] !== undefined ? opts[def.key] : (def.def !== undefined ? def.def : def.min);
-      advHost.appendChild(sliderRow(def, val));
+      advHost.appendChild(sliderRow(def, val, updateParamSummary));
     }
   });
+
+  updateParamSummary();
+  syncFoldHeight('foldParams');
+}
+
+/** 折叠状态下，在「参数」标题右侧显示前两项参数值 */
+function updateParamSummary() {
+  const rows = $$('#params .row');
+  const parts = SCHEMA[S1.engine].slice(0, 2).map((def, i) => {
+    const el = rows[i] ? rows[i].querySelector('input') : null;
+    const label = def.label.split(/[（(]/)[0].trim();
+    return label + ' ' + (el ? el.value : '');
+  });
+  setFoldSummary(undefined, parts.join(' · '));
 }
 
 function collectOptions() {
@@ -1177,6 +1244,8 @@ $('#dl3z').addEventListener('click', () => {
 
 /* ============================ 启动 ============================ */
 
+wireFold('foldEngine');
+wireFold('foldParams');
 renderPresets();
 renderParams();
 
