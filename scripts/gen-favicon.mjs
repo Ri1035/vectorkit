@@ -53,12 +53,14 @@ const VARIANTS = {
   light: { bg: '#FFFFFF', fg: '#18181B', pad: 0.12, radius: 0.22 }
 };
 
+/* 品牌图形默认呈现为「白底 + 黑线条」（与原图一致）。
+   仅在系统深色模式下自动反转为「黑底 + 白线条」，保证在深色标签栏中依然清晰。 */
 const manifest = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <style>
-    .bg{fill:#18181B}
-    .fg{fill:#FFFFFF}
-    @media (prefers-color-scheme: dark){ .bg{fill:#FFFFFF} .fg{fill:#18181B} }
+    .bg{fill:#FFFFFF}
+    .fg{fill:#18181B}
+    @media (prefers-color-scheme: dark){ .bg{fill:#18181B} .fg{fill:#FFFFFF} }
   </style>
   <rect class="bg" width="64" height="64" rx="14"/>
   <g class="fg" transform="translate(PLACEHOLDER_X PLACEHOLDER_Y) scale(PLACEHOLDER_S)">${inner}</g>
@@ -102,8 +104,9 @@ function autoFaviconSvg(size) {
     }
   }
 
+  // 浏览器图标统一使用 light 变体（白底 + 黑线条）
   const icoEntries = [16, 32, 48].map(size => ({
-    size, png: render(buildSvg(size, VARIANTS.dark), size)
+    size, png: render(buildSvg(size, VARIANTS.light), size)
   }));
   const ico = buildIco(icoEntries);
   fs.writeFileSync(path.join(outDir, 'favicon.ico'), ico);
@@ -113,10 +116,10 @@ function autoFaviconSvg(size) {
   fs.writeFileSync(path.join(outDir, 'favicon.svg'), svgFav);
   lines.push('favicon.svg'.padEnd(24) + (Buffer.byteLength(svgFav) / 1024).toFixed(1) + ' KB');
 
-  fs.copyFileSync(path.join(outDir, 'icon-dark-180.png'), path.join(outDir, 'apple-touch-icon.png'));
-  lines.push('apple-touch-icon.png'.padEnd(24) + ' (copy of icon-dark-180)');
+  fs.copyFileSync(path.join(outDir, 'icon-light-180.png'), path.join(outDir, 'apple-touch-icon.png'));
+  lines.push('apple-touch-icon.png'.padEnd(24) + ' (copy of icon-light-180)');
 
-  fs.writeFileSync(path.join(outDir, 'icon.svg'), buildSvg(64, VARIANTS.dark));
+  fs.writeFileSync(path.join(outDir, 'icon.svg'), buildSvg(64, VARIANTS.light));
   lines.push('icon.svg'.padEnd(24) + ' (RSS / generic)');
 
   console.log(lines.join('\n'));

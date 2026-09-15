@@ -1,5 +1,7 @@
-/* VectorKit —— 纯前端矢量转换器
- * 引擎全部跑在 worker.js 里，主线程只负责 UI 与轻量合成 */
+/* KOKA-VectorKit —— 纯前端矢量转换器
+ * 引擎在主线程按需加载（见下方「引擎（懒加载）」章节） */
+
+import { toLegacySvg } from './svg-compat.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -726,7 +728,8 @@ async function runVectorize(force) {
   try {
     const options = collectOptions();
     const wantSvgo = $('#svgoOn').checked;
-    const key = JSON.stringify({ e: S1.engine, o: options, s: wantSvgo, w: S1.w, h: S1.h, f: S1.file && S1.file.name });
+    const exportMode = $('#exportMode').value;
+    const key = JSON.stringify({ e: S1.engine, o: options, s: wantSvgo, m: exportMode, w: S1.w, h: S1.h, f: S1.file && S1.file.name });
 
     if (!force && key === S1.lastKey && S1.svg) {
       restore();
@@ -743,7 +746,8 @@ async function runVectorize(force) {
     prog.stage(80, '矢量化');
     let svgoMs = 0;
 
-    if (wantSvgo) {
+    /* 老软件兼容模式跳过 SVGO：其紧凑输出（相对命令 / 合并路径）会加剧老解析器出错 */
+    if (wantSvgo && exportMode !== 'legacy') {
       prog.stage(90, 'SVG 优化');
       try {
         const t1 = performance.now();
@@ -759,8 +763,11 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
-    const ms = performance.now() - t0;
     svgText = ensureSvgSize(svgText, S1.w, S1.h);
+    if (exportMode === 'legacy') {
+      svgText = toLegacySvg(svgText);
+    }
+    const ms = performance.now() - t0;
     showVectorResult(svgText, ms, key);
     if (svgoMs > 0) $('#hint1').textContent = `${ms.toFixed(0)} ms · SVGO ${svgoMs.toFixed(0)} ms`;
     prog.done('完成 · ' + ms.toFixed(0) + 'ms');
@@ -830,6 +837,14 @@ $('#advToggle').addEventListener('click', () => {
 $('#run1').addEventListener('click', () => runVectorize(false));
 $('#rerun1').addEventListener('click', () => runVectorize(true));
 $('#svgoOn').addEventListener('change', () => { S1.lastKey = ''; });
+
+$('#exportMode').addEventListener('change', e => {
+  S1.lastKey = '';
+  const legacy = e.target.value === 'legacy';
+  $('#exportHint').textContent = legacy
+    ? '输出绝对坐标路径并内联样式、跳过激进的路径合并，兼容 CorelDRAW X4 / Illustrator CS 等老软件'
+    : '标准 SVG 体积更小；老软件模式会改用绝对坐标并内联样式，避免导入后图形错位';
+});
 
 $('#viewToggle1').addEventListener('click', () => {
   S1.singleView = !S1.singleView;

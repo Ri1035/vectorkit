@@ -12,8 +12,8 @@
 <meta name="description" content="浏览器本地完成位图转 SVG、SVG 转位图与 SVG 优化压缩，文件不上传任何服务器。">
 
 <link rel="icon" href="./public/favicon.svg" type="image/svg+xml">
-<link rel="icon" href="./public/icon-dark-32.png" sizes="32x32" type="image/png">
-<link rel="icon" href="./public/icon-dark-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="./public/icon-light-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="./public/icon-light-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="./public/apple-touch-icon.png">
 <link rel="mask-icon" href="./public/favicon.svg" color="#18181B">
 
@@ -149,6 +149,10 @@ button{font:inherit;color:inherit}
   display:grid;place-items:center;
 }
 .brand .mark img{width:34px;height:auto;display:block}
+/* 图标为「白底 + 黑线条」，深色模式下反转以融入深色卡片 */
+@media (prefers-color-scheme: dark){
+  .brand .mark img,.dev-avatar{filter:invert(1)}
+}
 .brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
 .brand p{margin:1px 0 0;font-size:12.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:520px){ .brand p{display:none} .brand .mark{width:44px;height:44px} .brand .mark img{width:28px} }
@@ -589,7 +593,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
 
   <header class="topbar">
     <div class="brand">
-      <div class="mark"><img src="./public/icon-dark-64.png" alt=""></div>
+      <div class="mark"><img src="./public/icon-light-64.png" alt=""></div>
       <div>
         <h1>KOKA-VectorKit</h1>
         <p>纯前端矢量转换 · 文件从不离开浏览器</p>
@@ -607,7 +611,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </button>
         <div class="dev-panel" id="devPanel" hidden>
           <div class="dev-head">
-            <img src="./public/icon-dark-64.png" alt="" class="dev-avatar">
+            <img src="./public/icon-light-64.png" alt="" class="dev-avatar">
             <div>
               <b>KOKA-VectorKit</b>
               <span>纯前端矢量转换器</span>
@@ -697,6 +701,16 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <span style="flex:1;font-weight:600">输出时用 SVGO 优化路径</span>
         </label>
         <div class="hint" style="margin-top:8px">精简冗余节点与坐标精度，通常可减小 30–70% 体积</div>
+        <div class="row" style="margin-top:16px;margin-bottom:0">
+          <label for="exportMode">导出兼容性</label>
+          <select id="exportMode">
+            <option value="modern">标准 SVG</option>
+            <option value="legacy">CorelDRAW X4 等老软件</option>
+          </select>
+        </div>
+        <div class="hint" id="exportHint" style="margin-top:8px">
+          标准 SVG 体积更小；老软件模式会改用绝对坐标并内联样式，避免导入后图形错位
+        </div>
       </div>
 
       <button class="btn" id="run1" type="button" disabled>开始转换</button>

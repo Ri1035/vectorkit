@@ -1,9 +1,9 @@
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <style>
-    .bg{fill:#18181B}
-    .fg{fill:#FFFFFF}
-    @media (prefers-color-scheme: dark){ .bg{fill:#FFFFFF} .fg{fill:#18181B} }
+    .bg{fill:#FFFFFF}
+    .fg{fill:#18181B}
+    @media (prefers-color-scheme: dark){ .bg{fill:#18181B} .fg{fill:#FFFFFF} }
   </style>
   <rect class="bg" width="64" height="64" rx="14"/>
   <g class="fg" transform="translate(11.04 7.68) scale(0.032655)">
