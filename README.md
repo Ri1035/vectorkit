@@ -2,6 +2,9 @@
 
 纯前端矢量转换器 demo。文件的解析、转换、压缩**全部在浏览器本地完成**，不上传任何服务器，也不产生任何网络请求。
 
+- 线上地址：https://vectorkit.pages.dev
+- 代码仓库：https://github.com/Ri1035/vectorkit
+
 ## 功能
 
 ### 1. 位图 → 矢量
