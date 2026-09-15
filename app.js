@@ -282,6 +282,100 @@ function emptyState(icon, title, sub) {
 const ICON_IMAGE = `<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>`;
 const ICON_SQUEEZE = `<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8l7-5 7 5v8l-7 5-7-5z"/></svg>`;
 
+/* ============================ 出图进度条 ============================
+ * 引擎的 wasm 调用是同步阻塞的，拿不到真实百分比，因此采用「阶段式推进」：
+ * 每个阶段映射到一个进度锚点，用定时器平滑插值靠近，不做假匀速动画。
+ * 详见 docs/DESIGN.md 第八节。
+ */
+
+function createProgress(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const fill = el.querySelector('.progress-fill');
+  const label = el.querySelector('.progress-label');
+
+  let target = 0;
+  let current = 0;
+  let timer = null;
+  let hideTimer = null;
+
+  function paint() {
+    fill.style.width = current.toFixed(2) + '%';
+    el.setAttribute('aria-valuenow', String(Math.round(current)));
+  }
+
+  function step() {
+    const diff = target - current;
+    if (Math.abs(diff) < 0.4) {
+      current = target;
+      paint();
+      timer = null;
+      return;
+    }
+    current += diff * 0.2;
+    paint();
+    timer = setTimeout(step, 16);
+  }
+
+  function run() {
+    if (timer === null) timer = setTimeout(step, 16);
+  }
+
+  function reset() {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null; }
+    current = 0;
+    target = 0;
+    paint();
+    el.classList.remove('on', 'done', 'error');
+    el.setAttribute('aria-valuenow', '0');
+  }
+
+  return {
+    /** 开始：显示进度条并进入「准备」阶段 */
+    start(text) {
+      reset();
+      el.classList.add('on');
+      if (label) label.textContent = text || '准备中';
+      target = 6;
+      run();
+    },
+    /** 推进到指定阶段 */
+    stage(pct, text) {
+      if (pct > target) target = pct;
+      if (label && text) label.textContent = text + ' ' + Math.round(target) + '%';
+      run();
+    },
+    /** 完成：填满变绿，显示耗时，1.4s 后淡出 */
+    done(text) {
+      target = 100;
+      if (label && text) label.textContent = text;
+      el.classList.add('done');
+      run();
+      hideTimer = setTimeout(() => {
+        el.classList.remove('on');
+        hideTimer = null;
+      }, 1400);
+    },
+    /** 失败：变红并保留，直到下次操作 */
+    fail(text) {
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null; }
+      el.classList.add('error');
+      if (label) label.textContent = text || '失败';
+      target = Math.max(current, 12);
+      run();
+    },
+    reset
+  };
+}
+
+const PROG = {
+  1: createProgress('prog1'),
+  2: createProgress('prog2'),
+  3: createProgress('prog3')
+};
+
 /* ============================ Tab 切换 ============================ */
 
 $$('.tab').forEach(tab => {
@@ -523,7 +617,9 @@ function showVectorResult(svgText, ms, key) {
 async function runVectorize(force) {
   if (!S1.imageData) return;
   const btn = $('#run1');
+  const prog = PROG[1];
   const restore = busy(btn, '转换中…');
+  prog.start('准备中');
 
   try {
     const options = collectOptions();
@@ -532,16 +628,21 @@ async function runVectorize(force) {
 
     if (!force && key === S1.lastKey && S1.svg) {
       restore();
+      prog.done('已复用上次结果');
       $('#hint1').textContent = '已复用上次结果';
       return;
     }
 
+    prog.stage(20, '加载引擎');
     const t0 = performance.now();
     const rgba = new Uint8Array(S1.imageData.data);
+    prog.stage(34, '图像分析');
     let svgText = await vectorize({ engine: S1.engine, rgba, w: S1.w, h: S1.h, options });
+    prog.stage(80, '矢量化');
     let svgoMs = 0;
 
     if (wantSvgo) {
+      prog.stage(90, 'SVG 优化');
       try {
         const t1 = performance.now();
         svgText = await svgoOptimize(svgText, {
@@ -555,12 +656,15 @@ async function runVectorize(force) {
       }
     }
 
+    prog.stage(96, '整理输出');
     const ms = performance.now() - t0;
     svgText = ensureSvgSize(svgText, S1.w, S1.h);
     showVectorResult(svgText, ms, key);
     if (svgoMs > 0) $('#hint1').textContent = `${ms.toFixed(0)} ms · SVGO ${svgoMs.toFixed(0)} ms`;
+    prog.done('完成 · ' + ms.toFixed(0) + 'ms');
   } catch (err) {
     console.error(err);
+    prog.fail('转换失败');
     alert('转换失败：' + (err && err.message ? err.message : err));
   } finally {
     restore();
@@ -570,6 +674,7 @@ async function runVectorize(force) {
 function clearS1() {
   revoke(S1.srcUrl); revoke(S1.svgUrl);
   S1.imageData = null; S1.srcUrl = ''; S1.svgUrl = ''; S1.svg = ''; S1.lastKey = '';
+  PROG[1].reset();
   $('#file1').innerHTML = '';
   $('#run1').disabled = true;
   $('#dl1').disabled = true;
@@ -590,6 +695,7 @@ wireDrop($('#drop1'), async file => {
     revoke(S1.srcUrl);
     S1.srcUrl = URL.createObjectURL(file);
     renderStage1();
+    PROG[1].reset();
     fileTag($('#file1'), file, clearS1);
     $('#run1').disabled = false;
     $('#rerun1').classList.remove('hidden');
@@ -708,6 +814,7 @@ $('#demo1').addEventListener('click', () => {
   revoke(S1.srcUrl);
   S1.srcUrl = c.toDataURL('image/png');
   renderStage1();
+  PROG[1].reset();
 
   const name = useColor ? 'demo-logo.png' : 'demo-sketch.png';
   S1.file = { name, size: Math.round(S1.srcUrl.length * 0.72) };
@@ -736,13 +843,23 @@ async function loadSvgForRaster(file) {
   $('#run2').disabled = false;
   $('#dl2').disabled = true;
   $('#stats2').classList.add('hidden');
+  PROG[2].reset();
+}
+
+/* 用 onload + 超时替代 img.decode()：decode() 在个别环境会不 resolve，
+   而 onload 是更传统、更可靠的路径。 */
+function loadImage(url, timeout = 12000) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const timer = setTimeout(() => reject(new Error('图像解码超时')), timeout);
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('图像解码失败')); };
+    img.src = url;
+  });
 }
 
 async function rasterizeViaCanvas(svgUrl, w, h, bg, format) {
-  const img = new Image();
-  img.decoding = 'sync';
-  img.src = svgUrl;
-  await img.decode();
+  const img = await loadImage(svgUrl);
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
@@ -772,6 +889,8 @@ function downsample(srcCanvas, w, h) {
 async function runRasterize() {
   const btn = $('#run2');
   const restore = busy(btn, '渲染中…');
+  const prog = PROG[2];
+  prog.start('准备中');
 
   const t0 = performance.now();
   try {
@@ -799,16 +918,17 @@ async function runRasterize() {
     let canvas = null;
 
     if (engine === 'resvg') {
+      prog.stage(28, '加载引擎');
       try {
+        prog.stage(58, 'resvg 渲染');
         const res = await renderWithResvg(S2.svgText, ssW, bg);
         if (format === 'image/png' && ssW === w) {
           /* 最优路径：resvg 直出 PNG 字节，不经过 canvas，保留精确抗锯齿 */
+          prog.stage(90, '编码输出');
           blob = new Blob([res.png], { type: 'image/png' });
         } else {
           const pngUrl = URL.createObjectURL(new Blob([res.png], { type: 'image/png' }));
-          const img = new Image();
-          img.src = pngUrl;
-          await img.decode();
+          const img = await loadImage(pngUrl);
           const c = document.createElement('canvas');
           c.width = ssW; c.height = ssH;
           const ctx = c.getContext('2d');
@@ -822,6 +942,7 @@ async function runRasterize() {
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, ssW, ssH);
           URL.revokeObjectURL(pngUrl);
+          prog.stage(82, '缩放合成');
           canvas = downsample(c, w, h);
         }
       } catch (e) {
@@ -830,13 +951,16 @@ async function runRasterize() {
     }
 
     if (!blob && !canvas) {
+      prog.stage(50, '浏览器渲染');
       canvas = await rasterizeViaCanvas(S2.svgUrl, ssW, ssH, bg, format);
       canvas = downsample(canvas, w, h);
     }
     if (!blob) {
+      prog.stage(90, '编码输出');
       blob = await canvasToBlob(canvas, format, quality);
     }
     if (!blob) throw new Error('浏览器不支持该输出格式');
+    prog.stage(97, '整理输出');
     const ms = performance.now() - t0;
 
     S2.out = blob;
@@ -864,8 +988,10 @@ async function runRasterize() {
     ]);
 
     $('#dl2').disabled = false;
+    prog.done('完成 · ' + ms.toFixed(0) + 'ms');
   } catch (err) {
     console.error(err);
+    prog.fail('渲染失败');
     alert('渲染失败：' + (err.message || err));
   } finally {
     restore();
@@ -878,6 +1004,7 @@ wireDrop($('#drop2'), async file => {
     fileTag($('#file2'), file, () => {
       revoke(S2.svgUrl);
       S2.svgText = ''; S2.svgUrl = '';
+      PROG[2].reset();
       $('#file2').innerHTML = '';
       $('#run2').disabled = true;
       $('#dl2').disabled = true;
@@ -939,10 +1066,12 @@ wireDrop($('#drop3'), async file => {
     S3.file = file;
     S3.srcSize = new Blob([text]).size;
     $('#run3').disabled = false;
+    PROG[3].reset();
     fileTag($('#file3'), file, () => {
       S3.src = ''; S3.out = ''; S3.gz = null;
       revoke(S3.srcUrl); revoke(S3.outUrl);
       S3.srcUrl = ''; S3.outUrl = '';
+      PROG[3].reset();
       $('#file3').innerHTML = '';
       $('#run3').disabled = true;
       $('#dl3').disabled = true;
@@ -958,6 +1087,8 @@ $('#optPrec').addEventListener('input', e => { $('#optPrecV').textContent = e.ta
 $('#run3').addEventListener('click', async () => {
   const btn = $('#run3');
   const restore = busy(btn, '优化中…');
+  const prog = PROG[3];
+  prog.start('准备中');
 
   const t0 = performance.now();
   try {
@@ -966,9 +1097,11 @@ $('#run3').addEventListener('click', async () => {
     const meta = $('#optMeta').checked;
     const empty = $('#optEmpty').checked;
 
+    prog.stage(18, '解析结构');
     let out = S3.src;
 
     if (useSvgo) {
+      prog.stage(60, 'SVGO 优化');
       try {
         out = await svgoOptimize(out, {
           multipass: true,
@@ -983,15 +1116,22 @@ $('#run3').addEventListener('click', async () => {
         out = localOptimize(out, { meta, empty, precision });
       }
     } else {
+      prog.stage(60, '本地优化');
       out = localOptimize(out, { meta, empty, precision });
     }
 
     S3.out = out;
+    prog.stage(88, '统计结果');
     const ms = performance.now() - t0;
     const outSize = new Blob([out]).size;
     const saved = S3.srcSize > 0 ? (1 - outSize / S3.srcSize) * 100 : 0;
 
-    S3.gz = $('#optGzip').checked ? await gzipBlob(out) : null;
+    if ($('#optGzip').checked) {
+      prog.stage(93, '生成 SVGZ');
+      S3.gz = await gzipBlob(out);
+    } else {
+      S3.gz = null;
+    }
 
     S3.srcUrl = makeUrl(S3.srcUrl, S3.src, 'image/svg+xml');
     S3.outUrl = makeUrl(S3.outUrl, out, 'image/svg+xml');
@@ -1018,8 +1158,10 @@ $('#run3').addEventListener('click', async () => {
 
     $('#dl3').disabled = false;
     $('#dl3z').disabled = !S3.gz;
+    prog.done('完成 · ' + ms.toFixed(0) + 'ms');
   } catch (err) {
     console.error(err);
+    prog.fail('优化失败');
     alert('优化失败：' + (err.message || err));
   } finally {
     restore();
