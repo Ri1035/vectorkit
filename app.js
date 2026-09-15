@@ -398,6 +398,41 @@ function setChip(state, text) {
   $('#engineText').textContent = text;
 }
 
+/* ============================ 右上角开发者面板 ============================
+ * 默认收起，点击按钮展开；支持点击外部关闭与 Esc 关闭。
+ */
+
+function wireDevPanel() {
+  const btn = document.getElementById('devBtn');
+  const panel = document.getElementById('devPanel');
+  if (!btn || !panel) return;
+
+  const setOpen = (open) => {
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    panel.hidden = !open;
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(panel.hidden);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (panel.hidden) return;
+    if (panel.contains(e.target) || btn.contains(e.target)) return;
+    setOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !panel.hidden) {
+      setOpen(false);
+      btn.focus();
+    }
+  });
+
+  setOpen(false);
+}
+
 /* ============================ 可折叠卡片 ============================
  * 用内联样式直接驱动（而非依赖 class 规则）：实测在部分环境下
  * `.collapsible.open .card-body` 虽然 matches() 为 true，但样式不会被应用，
@@ -1244,6 +1279,7 @@ $('#dl3z').addEventListener('click', () => {
 
 /* ============================ 启动 ============================ */
 
+wireDevPanel();
 wireFold('foldEngine');
 wireFold('foldParams');
 renderPresets();
