@@ -431,8 +431,9 @@ let WASM_VECTOR_LEN = 0;
 let wasm = null;
 let wasmInstance = null;
 
-async function initVtracerWasm() {
+export async function initVtracerWasm() {
   if (wasm) return wasm;
+  if (typeof fetch !== 'function') throw new Error('当前环境不支持 fetch');
   const url = new URL('vtracer_wasm_bg.wasm', import.meta.url);
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('无法加载 vtracer wasm: HTTP ' + resp.status);
@@ -444,6 +445,7 @@ async function initVtracerWasm() {
   return wasm;
 }
 
-await initVtracerWasm();
+/* 注意：刻意不使用顶层 await。顶层 await 会让 module worker 的模块加载永久挂起
+   （实测 Chromium/Edge），因此改由调用方显式 await initVtracerWasm()。 */
 
 export { vectorize_bytes, vectorize_rgba };

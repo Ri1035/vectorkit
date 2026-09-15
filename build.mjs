@@ -13,11 +13,16 @@ if (fs.existsSync(dist)) {
   fs.mkdirSync(dist, { recursive: true });
 }
 
-const files = ['index.html', 'app.js'];
+const files = ['index.html', 'app.js', 'worker.js', 'README.md'];
 for (const f of files) {
-  fs.copyFileSync(path.join(root, f), path.join(dist, f));
+  if (fs.existsSync(path.join(root, f))) {
+    fs.copyFileSync(path.join(root, f), path.join(dist, f));
+  }
 }
 fs.cpSync(path.join(root, 'vendor'), path.join(dist, 'vendor'), { recursive: true });
+if (fs.existsSync(path.join(root, 'public'))) {
+  fs.cpSync(path.join(root, 'public'), path.join(dist, 'public'), { recursive: true });
+}
 
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true })
   .flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]);

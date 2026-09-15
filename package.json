@@ -13,7 +13,9 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
     "@visioncortex/vtracer": "^1.0.0-alpha.4",
-    "esm-potrace-wasm": "^0.5.1"
+    "esm-potrace-wasm": "^0.5.1",
+    "svgo": "^4.1.0"
   }
 }
