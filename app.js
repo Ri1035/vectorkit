@@ -3,6 +3,7 @@
 
 import { toLegacySvg } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
+import { svgToCmykEps } from './eps-export.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -717,6 +718,7 @@ function showVectorResult(svgText, ms, key) {
   ]);
 
   $('#dl1').disabled = false;
+  $('#dlEps').disabled = false;
   $('#copy1').disabled = false;
 }
 
@@ -789,6 +791,7 @@ function clearS1() {
   $('#file1').innerHTML = '';
   $('#run1').disabled = true;
   $('#dl1').disabled = true;
+  $('#dlEps').disabled = true;
   $('#copy1').disabled = true;
   $('#viewToggle1').style.display = 'none';
   $('#stats1').classList.add('hidden');
@@ -855,6 +858,37 @@ $('#viewToggle1').addEventListener('click', () => {
 
 $('#dl1').addEventListener('click', () => {
   if (S1.outBlob) download(S1.outBlob, S1.outName || 'vector.svg');
+});
+
+/* ---------- CMYK EPS 导出 ---------- */
+
+function exportCmykEps(svgText, fileName, hintId) {
+  const hint = $(hintId);
+  try {
+    const transparent = hintId === '#epsHint' ? $('#epsTransparent').checked : $('#epsTransparent3').checked;
+    const { eps, warnings, shapes } = svgToCmykEps(svgText, {
+      transparent,
+      title: fileName
+    });
+    if (!eps) {
+      if (hint) hint.textContent = '⚠ ' + warnings.join('；');
+      return;
+    }
+    download(new Blob([eps], { type: 'application/postscript' }), fileName);
+    if (hint) {
+      hint.textContent = '已导出 ' + shapes + ' 个图形'
+        + (transparent ? '（透明底）' : '（白底）')
+        + (warnings.length ? ' ⚠ ' + warnings.join('；') : '');
+    }
+  } catch (e) {
+    console.error(e);
+    if (hint) hint.textContent = '⚠ EPS 导出失败：' + (e.message || e);
+  }
+}
+
+$('#dlEps').addEventListener('click', () => {
+  if (!S1.svg) return;
+  exportCmykEps(S1.svg, (S1.outName || 'vector').replace(/\.svg$/, '') + '-cmyk.eps', '#epsHint');
 });
 
 $('#copy1').addEventListener('click', async () => {
@@ -1195,6 +1229,7 @@ wireDrop($('#drop3'), async file => {
       $('#run3').disabled = true;
       $('#dl3').disabled = true;
       $('#dl3z').disabled = true;
+      $('#dlEps3').disabled = true;
       $('#stats3').classList.add('hidden');
       $('#stage3').innerHTML = emptyState(ICON_SQUEEZE, '载入 SVG 后开始优化', 'SVGO 在本地压缩，不改变矢量外观');
     });
@@ -1277,6 +1312,7 @@ $('#run3').addEventListener('click', async () => {
 
     $('#dl3').disabled = false;
     $('#dl3z').disabled = !S3.gz;
+    $('#dlEps3').disabled = false;
     prog.done('完成 · ' + ms.toFixed(0) + 'ms');
   } catch (err) {
     console.error(err);
@@ -1292,6 +1328,11 @@ $('#dl3').addEventListener('click', () => {
 });
 $('#dl3z').addEventListener('click', () => {
   if (S3.gz && S3.file) download(S3.gz, stripExt(S3.file.name) + '.min.svgz');
+});
+
+$('#dlEps3').addEventListener('click', () => {
+  if (!S3.out) return;
+  exportCmykEps(S3.out, stripExt(S3.file ? S3.file.name : 'svg') + '-cmyk.eps', '#epsHint3');
 });
 
 /* ============================ Tab4 · 去背景（纯色底） ============================

@@ -2,6 +2,33 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 与 [约定式提交](https://www.conventionalcommits.org/zh-hans/)。
 
+## [0.8.0] - 2026-09-15
+
+新增印刷向 CMYK EPS 导出，支持透明底选项。
+
+### 新增
+
+- **「下载 EPS」按钮**（位图→矢量页 / 优化压缩页结果工具栏）：
+  输出 PostScript Level 2 EPS，色值以 `setcmykcolor` 写入，可直接交印厂或导入
+  CorelDRAW / Illustrator / InDesign
+- **CMYK EPS 透明底勾选**：勾选后不铺白底矩形，背景由纸张／下承印物决定；
+  不勾选则输出 CMYK 纸白底（固定画布区域）
+- **`cmyk.js` 分色模块**：RGB→CMYK 朴素分色，带黑版生成（GCR）与总油墨量
+  上限（TAC，默认 300%）裁剪
+- **`eps-export.js` 转换器**（零依赖）：
+  - 支持 path / rect（含圆角）/ circle / ellipse / line / polyline / polygon
+    与 g 的 fill / stroke / transform 继承
+  - SVG 圆弧（A 命令）转三次贝塞尔段，二次贝塞尔（Q/T）升三次
+  - fill-rule evenodd → EPS `eofill`；描边线宽随 transform 缩放
+  - 坐标系自动翻转（SVG y 向下 → EPS y 向上），1 px = 1 pt
+- 导出后在界面提示降级警告（渐变取平均色、透明度忽略、文本/图像元素跳过）
+
+### 边界说明
+
+- EPS 无 alpha 通道，「透明底」即不铺底色；EPS 也不支持半透明，所有透明度按不透明处理
+- 分色为朴素公式（数学 CMYK），未做 ICC 校色；对色差要求严格的印刷请以印厂校色为准
+- SVG 中的渐变／图案会降级为平均色，文本需先转曲线
+
 ## [0.7.0] - 2026-09-15
 
 新增「去背景」Tab，针对纯色背景提供浏览器本地、零模型下载的抠图能力。

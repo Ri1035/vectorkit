@@ -715,6 +715,15 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         <div class="hint" id="exportHint" style="margin-top:8px">
           标准 SVG 体积更小；老软件模式会改用绝对坐标并内联样式，避免导入后图形错位
         </div>
+        <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
+          <label class="row" style="margin:0;cursor:pointer">
+            <input type="checkbox" id="epsTransparent">
+            <span style="flex:1;font-weight:600">CMYK EPS 透明底</span>
+          </label>
+          <div class="hint" id="epsHint" style="margin-top:8px">
+            「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，底色由纸张／下承印物决定，不勾选则输出白底
+          </div>
+        </div>
       </div>
 
       <button class="btn" id="run1" type="button" disabled>开始转换</button>
@@ -727,6 +736,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <div class="btnrow">
             <button class="btn ghost sm" id="viewToggle1" type="button" style="display:none">只看结果</button>
             <button class="btn ghost sm" id="dl1" type="button" disabled>下载 SVG</button>
+            <button class="btn ghost sm" id="dlEps" type="button" disabled>下载 EPS</button>
             <button class="btn ghost sm" id="copy1" type="button" disabled>复制源码</button>
           </div>
         </div>
@@ -1023,6 +1033,15 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <input type="checkbox" id="optGzip">
           <span style="flex:1;font-weight:600">同时输出 SVGZ（gzip）</span>
         </label>
+        <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
+          <label class="row" style="margin:0;cursor:pointer">
+            <input type="checkbox" id="epsTransparent3">
+            <span style="flex:1;font-weight:600">CMYK EPS 透明底</span>
+          </label>
+          <div class="hint" id="epsHint3" style="margin-top:8px">
+            「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，不勾选则输出白底
+          </div>
+        </div>
       </div>
 
       <button class="btn" id="run3" type="button" disabled>开始优化</button>
@@ -1035,6 +1054,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <div class="btnrow">
             <button class="btn ghost sm" id="dl3" type="button" disabled>下载 SVG</button>
             <button class="btn ghost sm" id="dl3z" type="button" disabled>下载 SVGZ</button>
+            <button class="btn ghost sm" id="dlEps3" type="button" disabled>下载 EPS</button>
           </div>
         </div>
         <div class="progress" id="prog3" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
