@@ -534,7 +534,7 @@ updatePreSummary();
  * 内联方式可稳定生效。
  */
 
-function wireFold(rootId) {
+function wireFold(rootId, defaultOpen = false) {
   const root = document.getElementById(rootId);
   if (!root) return;
   const head = root.querySelector('.card-head');
@@ -545,7 +545,11 @@ function wireFold(rootId) {
     root.classList.toggle('open', open);
     head.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {
-      body.style.maxHeight = (body.scrollHeight + 32) + 'px';
+      const setH = () => { body.style.maxHeight = (body.scrollHeight + 40) + 'px'; };
+      setH();
+      // 字体/图标加载完成后内容实际高度会变，二次校准避免底部被裁
+      setTimeout(setH, 300);
+      setTimeout(setH, 900);
       body.style.opacity = '1';
       body.style.marginTop = '14px';
     } else {
@@ -555,7 +559,7 @@ function wireFold(rootId) {
     }
   };
 
-  apply(false);
+  apply(defaultOpen);
   head.addEventListener('click', () => apply(!root.classList.contains('open')));
 
   // 内容高度变化时（如切换引擎导致预设数量变化），同步展开态高度
@@ -1067,6 +1071,8 @@ function applyTemplate(tpl) {
 
   S1.lastKey = '';
   $$('#templates .preset').forEach(b => b.classList.toggle('on', b.dataset.tpl === tpl.id));
+  const sum = $('#sumTpl');
+  if (sum) sum.textContent = tpl.name;
   const st = $('#tplStatus');
   if (st) {
     st.classList.remove('hidden');
@@ -1093,11 +1099,8 @@ function renderTemplates() {
 
 $('#advToggle').addEventListener('click', () => {
   const t = $('#advToggle');
-  const on = !t.classList.contains('open');
-  t.classList.toggle('open', on);
-  $('#advBox').classList.toggle('open', on);
-  const tpl = $('#tplBox');
-  if (tpl) tpl.classList.toggle('open', on);
+  t.classList.toggle('open');
+  $('#advBox').classList.toggle('open');
 });
 
 $('#run1').addEventListener('click', () => runVectorize(false));
@@ -2030,6 +2033,7 @@ $('#demo4').addEventListener('click', async () => {
 wireDevPanel();
 wireFold('foldEngine');
 wireFold('foldParams');
+wireFold('foldTpl', true);
 wireFold('foldPre');
 wireFold('foldPost');
 wireFold('foldPost3');

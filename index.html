@@ -154,6 +154,7 @@ button{font:inherit;color:inherit}
   .brand .mark img,.dev-avatar{filter:invert(1)}
 }
 .brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.brand h1 .ver{font-size:11px;font-weight:500;color:var(--text-3);letter-spacing:0;margin-left:7px;vertical-align:2px}
 .brand p{margin:1px 0 0;font-size:12.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:520px){ .brand p{display:none} .brand .mark{width:44px;height:44px} .brand .mark img{width:28px} }
 
@@ -627,7 +628,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
     <div class="brand">
       <div class="mark"><img src="./public/icon-light-64.png" alt=""></div>
       <div>
-        <h1>KOKA-VectorKit</h1>
+        <h1>KOKA-VectorKit<span class="ver">{{VERSION}}</span></h1>
         <p>纯前端矢量转换与抠图 · 文件从不离开浏览器</p>
       </div>
     </div>
@@ -694,8 +695,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </button>
         <div class="card-body" id="foldEngineBody">
           <div class="seg" id="engineSeg" style="margin-bottom:14px">
-            <button data-engine="vtracer" class="on" type="button" disabled>VTracer · 彩色</button>
-            <button data-engine="potrace" type="button" disabled>Potrace · 黑白</button>
+            <button data-engine="vtracer" class="on" type="button">VTracer · 彩色</button>
+            <button data-engine="potrace" type="button">Potrace · 黑白</button>
           </div>
           <div class="presets" id="presets"></div>
         </div>
@@ -711,13 +712,21 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <div id="params"></div>
           <button class="toggle" id="advToggle" type="button" style="margin-top:15px"><span class="caret">›</span>高级参数</button>
           <div class="adv" id="advBox"></div>
-          <div class="adv" id="tplBox">
-            <div class="hint" style="margin-bottom:10px">
-              参数模板 · 点击套用整套配置（将覆盖引擎参数、预处理与后处理设置）
-            </div>
-            <div class="presets" id="templates"></div>
-            <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <div class="card collapsible" id="foldTpl">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldTplBody">
+          <h3>参数模板</h3>
+          <span class="card-sum" id="sumTpl">点击套用整套配置</span>
+          <span class="caret">›</span>
+        </button>
+        <div class="card-body" id="foldTplBody">
+          <div class="hint" style="margin-bottom:10px">
+            点击即套用整套配置（覆盖引擎参数、预处理与后处理设置）
           </div>
+          <div class="presets" id="templates"></div>
+          <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>
         </div>
       </div>
 

@@ -19,6 +19,11 @@ for (const f of files) {
     fs.copyFileSync(path.join(root, f), path.join(dist, f));
   }
 }
+
+/* 把 package.json 的版本号注入 dist 副本的 {{VERSION}} 占位符（源文件保持占位符） */
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const distHtml = path.join(dist, 'index.html');
+fs.writeFileSync(distHtml, fs.readFileSync(distHtml, 'utf8').replace(/\{\{VERSION\}\}/g, 'v' + pkg.version));
 fs.cpSync(path.join(root, 'vendor'), path.join(dist, 'vendor'), { recursive: true });
 if (fs.existsSync(path.join(root, 'public'))) {
   fs.cpSync(path.join(root, 'public'), path.join(dist, 'public'), { recursive: true });
