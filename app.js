@@ -793,7 +793,8 @@ async function runVectorize(force) {
     const preOpts = collectPreOptions();
     const key = JSON.stringify({
       e: S1.engine, o: options, s: wantSvgo, m: exportMode,
-      p: preOpts, w: S1.w, h: S1.h, f: S1.file && S1.file.name
+      p: preOpts, q: collectPostOptions(1),
+      w: S1.w, h: S1.h, f: S1.file && S1.file.name
     });
 
     if (!force && key === S1.lastKey && S1.svg) {
@@ -845,20 +846,23 @@ async function runVectorize(force) {
       }
     }
 
-    /* 同色闭合路径合并（几何布尔并集）：放在 SVGO 之后，
-       对已压缩精度的路径做几何合并，输出的对象数即最终对象数 */
-    if ($('#mergeOn').checked) {
-      prog.stage(92, '同色路径合并');
+    /* 矢量后处理（同色合并 / 碎块清理 / 边缘平滑）：放在 SVGO 之后，
+       输出的对象数即最终交付文件里的对象数 */
+    const post1 = collectPostOptions(1);
+    if (post1.enabled || post1.minArea > 0) {
+      prog.stage(92, '矢量后处理');
       try {
         const mr = await mergeSameColorPaths(svgText, {
-          tolerance: +$('#mergeTol').value / 100,
+          tolerance: post1.tolerance,
+          minArea: post1.minArea,
+          edgeSmooth: post1.edgeSmooth,
           onProgress: (p, label) => prog.stage(90 + Math.round(p * 0.04), label)
         });
         svgText = mr.svg;
         showMergeStatus(1, mr.stats, mr.warnings);
       } catch (e) {
-        console.warn('同色合并失败，使用原 SVG', e);
-        showMergeStatus(1, null, ['同色合并失败：' + (e.message || e)]);
+        console.warn('矢量后处理失败，使用原 SVG', e);
+        showMergeStatus(1, null, ['矢量后处理失败：' + (e.message || e)]);
       }
     } else {
       hideMergeStatus(1);
@@ -954,44 +958,98 @@ $('#dl1').addEventListener('click', () => {
   if (S1.outBlob) download(S1.outBlob, S1.outName || 'vector.svg');
 });
 
-/* ---------- 同色路径合并（几何布尔并集） ---------- */
+/* ---------- 矢量后处理（同色合并 / 碎块清理 / 边缘平滑） ---------- */
 
-const MERGE_UI = {
-  1: { on: '#mergeOn', tol: '#mergeTol', tolV: '#mergeTolV', row: '#mergeTolRow', status: '#mergeStatus' },
-  3: { on: '#mergeOn3', tol: '#mergeTol3', tolV: '#mergeTolV3', row: '#mergeTolRow3', status: '#mergeStatus3' }
+const POST_UI = {
+  1: {
+    on: '#mergeOn', tol: '#mergeTol', tolV: '#mergeTolV', row: '#mergeTolRow',
+    fragOn: '#fragOn', fragTol: '#fragTol', fragTolV: '#fragTolV', fragRow: '#fragRow',
+    smooth: '#smoothEdge', smoothV: '#smoothEdgeV',
+    status: '#mergeStatus', sum: '#sumPost'
+  },
+  3: {
+    on: '#mergeOn3', tol: '#mergeTol3', tolV: '#mergeTolV3', row: '#mergeTolRow3',
+    fragOn: '#fragOn3', fragTol: '#fragTol3', fragTolV: '#fragTolV3', fragRow: '#fragRow3',
+    smooth: '#smoothEdge3', smoothV: '#smoothEdgeV3',
+    status: '#mergeStatus3', sum: '#sumPost3'
+  }
 };
 
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/** 读取后处理设置 */
+function collectPostOptions(i) {
+  const ui = POST_UI[i];
+  return {
+    enabled: $(ui.on).checked,
+    tolerance: parseInt($(ui.tol).value, 10) / 100,
+    minArea: $(ui.fragOn).checked ? parseInt($(ui.fragTol).value, 10) : 0,
+    edgeSmooth: parseInt($(ui.smooth).value, 10) || 0
+  };
+}
+
+/** 折叠状态下的摘要 */
+function updatePostSummary(i) {
+  const ui = POST_UI[i];
+  const o = collectPostOptions(i);
+  const parts = [];
+  parts.push(o.enabled ? '合并' : '不合并');
+  if (o.minArea) parts.push('碎块<' + o.minArea + 'px²');
+  parts.push(o.edgeSmooth ? '平滑' + o.edgeSmooth : '不平滑');
+  const el = $(ui.sum);
+  if (el) el.textContent = parts.join(' · ');
+  // 后处理设置变化必须重新转换（S1 在模块稍后定义，初始化阶段忽略）
+  try { S1.lastKey = ''; } catch (e) { /* 尚未初始化 */ }
+}
+
 [1, 3].forEach(i => {
-  const ui = MERGE_UI[i];
+  const ui = POST_UI[i];
   const on = $(ui.on), tol = $(ui.tol), tolV = $(ui.tolV), row = $(ui.row);
   if (!on || !tol) return;
-  const sync = () => {
+  const syncMerge = () => {
     tolV.textContent = (tol.value / 100).toFixed(2);
     row.style.opacity = on.checked ? '1' : '.5';
     row.style.pointerEvents = on.checked ? '' : 'none';
+    updatePostSummary(i);
   };
-  tol.addEventListener('input', sync);
-  on.addEventListener('change', () => {
-    sync();
-    if (!on.checked) hideMergeStatus(i);
-  });
-  sync();
+  tol.addEventListener('input', syncMerge);
+  on.addEventListener('change', () => { syncMerge(); if (!on.checked) hideMergeStatus(i); });
+
+  const fragOn = $(ui.fragOn), fragTol = $(ui.fragTol), fragTolV = $(ui.fragTolV), fragRow = $(ui.fragRow);
+  const syncFrag = () => {
+    if (!fragTolV) return;
+    fragTolV.textContent = fragTol.value;
+    fragRow.style.opacity = fragOn.checked ? '1' : '.5';
+    fragRow.style.pointerEvents = fragOn.checked ? '' : 'none';
+    updatePostSummary(i);
+  };
+  fragTol.addEventListener('input', syncFrag);
+  fragOn.addEventListener('change', syncFrag);
+
+  const sm = $(ui.smooth);
+  const syncSmooth = () => {
+    $(ui.smoothV).textContent = sm.value;
+    updatePostSummary(i);
+  };
+  sm.addEventListener('input', syncSmooth);
+
+  syncMerge();
+  syncFrag();
+  syncSmooth();
 });
 
 function hideMergeStatus(i) {
-  const el = $(MERGE_UI[i].status);
+  const el = $(POST_UI[i].status);
   if (el) { el.classList.add('hidden'); el.textContent = ''; }
 }
 
 /**
- * 展示同色合并结果与颜色检测告警
+ * 展示矢量后处理结果与颜色检测告警
  * @param {number} i 1=位图转矢量 3=优化压缩
  */
 function showMergeStatus(i, stats, warnings) {
-  const el = $(MERGE_UI[i].status);
+  const el = $(POST_UI[i].status);
   if (!el) return;
   if (!stats && (!warnings || !warnings.length)) { hideMergeStatus(i); return; }
 
@@ -1001,8 +1059,12 @@ function showMergeStatus(i, stats, warnings) {
     const after = stats.afterShapes;
     const cut = before - after;
     const pct = before ? Math.round(cut / before * 100) : 0;
-    lines.push(`同色路径合并：图形 <b>${before} → ${after}</b> 个（减少 ${cut}，${pct}%）`
-      + ` · 合并 ${stats.mergeGroupsDone || stats.mergeGroups} 组 · 简化锚点 ${stats.anchorsPruned || 0}`);
+    const bits = [`图形 <b>${before} → ${after}</b> 个（减少 ${cut}，${pct}%）`];
+    if (stats.mergeGroupsDone) bits.push(`合并 ${stats.mergeGroupsDone} 组`);
+    if (stats.droppedFragments) bits.push(`清除碎块 ${stats.droppedFragments}`);
+    if (stats.anchorsPruned) bits.push(`优化锚点 ${stats.anchorsPruned}`);
+    lines.push('矢量后处理：' + bits.join(' · '));
+
     const shown = stats.colors.slice(0, 8).map(escapeHtml).join(' ');
     lines.push(`检测到 <b>${stats.colorCount}</b> 种颜色：${shown}`
       + (stats.colorCount > 8 ? ` 等 ${stats.colorCount} 种` : '')
@@ -1413,21 +1475,24 @@ $('#run3').addEventListener('click', async () => {
     prog.stage(18, '解析结构');
     let out = S3.src;
 
-    /* 同色合并作为预处理：先做几何级合并与锚点精简，再交给 SVGO 压缩 */
-    if ($('#mergeOn3').checked) {
-      prog.stage(30, '同色路径合并');
+    /* 矢量后处理作为预处理：先做几何合并、碎块清理与边缘平滑，再交给 SVGO 压缩 */
+    const post3 = collectPostOptions(3);
+    if (post3.enabled || post3.minArea > 0) {
+      prog.stage(30, '矢量后处理');
       try {
         const mr = await mergeSameColorPaths(out, {
-          tolerance: +$('#mergeTol3').value / 100,
+          tolerance: post3.tolerance,
+          minArea: post3.minArea,
+          edgeSmooth: post3.edgeSmooth,
           onProgress: (p, label) => prog.stage(28 + Math.round(p * 0.22), label)
         });
         out = mr.svg;
         S3.mergeStats = mr.stats;
         showMergeStatus(3, mr.stats, mr.warnings);
       } catch (e) {
-        console.warn('同色合并失败，使用原 SVG', e);
+        console.warn('矢量后处理失败，使用原 SVG', e);
         S3.mergeStats = null;
-        showMergeStatus(3, null, ['同色合并失败：' + (e.message || e)]);
+        showMergeStatus(3, null, ['矢量后处理失败：' + (e.message || e)]);
       }
     } else {
       S3.mergeStats = null;
@@ -1805,6 +1870,8 @@ wireDevPanel();
 wireFold('foldEngine');
 wireFold('foldParams');
 wireFold('foldPre');
+wireFold('foldPost');
+wireFold('foldPost3');
 renderPresets();
 renderParams();
 

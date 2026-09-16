@@ -422,21 +422,6 @@ function dpKeep(points, tol) {
   return keep;
 }
 
-/** 闭合环选择两个基准点（尽量远），把环拆成两段做 D-P */
-function ringAnchors(points) {
-  const n = points.length;
-  if (n < 4) return [0, 1];
-  if (n > 800) return [0, n >> 1];
-  let best = -1, a = 0, b = 1;
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const d = (points[i].x - points[j].x) ** 2 + (points[i].y - points[j].y) ** 2;
-      if (d > best) { best = d; a = i; b = j; }
-    }
-  }
-  return a < b ? [a, b] : [b, a];
-}
-
 /* ============================ Paper.js 加载 ============================ */
 
 let paperPromise = null;
@@ -482,16 +467,57 @@ function uniteBalanced(items) {
   return level[0];
 }
 
+/** 用 Paper 解析 path 数据（多子路径返回 CompoundPath） */
+function parseShape(paper, d) {
+  try {
+    return new paper.CompoundPath({ pathData: d, insert: false });
+  } catch (e) {
+    try { return new paper.Path({ pathData: d, insert: false }); } catch (e2) { return null; }
+  }
+}
+
+/** 取形状中最大子路径的面积（绝对值，px²） */
+function maxSubpathArea(shape) {
+  const kids = shape.className === 'CompoundPath' ? shape.children : [shape];
+  let max = 0;
+  for (const k of kids) {
+    if (!k.segments || k.segments.length < 3) continue;
+    const a = Math.abs(k.area || 0);
+    if (a > max) max = a;
+  }
+  return max;
+}
+
+/** 形状是否闭合（合并/处理的前提） */
+function ensureClosed(shape, maxGap = 1) {
+  const kids = shape.className === 'CompoundPath' ? shape.children : [shape];
+  let allClosed = true;
+  for (const k of kids) {
+    if (!k.segments || k.segments.length < 3) { allClosed = false; continue; }
+    if (k.closed) continue;
+    const n = k.segments.length;
+    if (k.firstSegment.point.getDistance(k.lastSegment.point) <= maxGap) {
+      k.closed = true;
+      if (n > 3 && k.firstSegment.point.getDistance(k.lastSegment.point) < 0.01) k.removeSegment(n - 1);
+    } else {
+      allClosed = false;
+    }
+  }
+  return allClosed;
+}
+
 /**
- * 合并同色闭合路径
+ * 合并同色闭合路径 + 矢量后处理
  * @param {string} svgText
  * @param {Object} opts
  * @param {number} opts.tolerance 锚点简化容差（px），推荐 0.02–0.1
+ * @param {number} opts.minArea   碎块清理面积阈值（px²），小于该值的孤立碎块被删除；0 = 关闭
+ * @param {number} opts.edgeSmooth 边缘平滑档位 0–3：1 = 仅去抖动（零变形）；2–3 = 叠加轻度曲线化
  * @param {(p:number, label:string)=>void} opts.onProgress
  * @returns {Promise<{svg:string, stats:Object|null, warnings:string[]}>}
  */
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -654,15 +680,22 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     mergedShapes: 0,
     removedNodes: 0,
     anchorsPruned: 0,
+    droppedFragments: 0,
+    refinedShapes: 0,
     skipped,
     tolerance,
+    minArea,
+    edgeSmooth,
     ms: 0,
     shapesTotal: statsCollect.shapes
   };
 
-  if (!mergeable.length) {
+  const doMerge = mergeable.length > 0;
+  const doFilter = minArea > 0;
+  const doRefine = edgeSmooth > 0;      // 边缘平滑对单元素同样生效，必须计入早退判断
+  if (!doMerge && !doFilter && !doRefine) {
     stats.ms = performance.now() - t0;
-    warnings.push('没有找到可合并的同色闭合路径组（需要同色 ≥ 2 个）');
+    if (!doMerge) warnings.push('没有找到可合并的同色闭合路径组（需要同色 ≥ 2 个）');
     pushSkipWarnings(warnings, skipped);
     return { svg: svgText, stats, warnings };
   }
@@ -681,6 +714,8 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   onProgress?.(40, '同色路径合并');
 
   const results = new Map();     // key → { d, rule, removed, error }
+  const drops = new Set();        // 面积过小、判为碎块的元素
+  const elemResults = new Map();  // Element → { d, rule }（未参与合并但被平滑/清理）
   let done = 0;
   let anchorsPruned = 0;
 
@@ -688,22 +723,11 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     const items = [];
     try {
       for (const c of g.list) {
-        const p = new paper.Path({ pathData: c.d, insert: false });
-        if (!p || !p.segments || !p.segments.length) continue;
-        if (!p.closed) {
-          /* 无 Z 但首尾点重合：显式闭合，并移除退化段 */
-          const n = p.segments.length;
-          const closeGap = n >= 3
-            ? p.firstSegment.point.getDistance(p.lastSegment.point) : Infinity;
-          if (closeGap <= 1) {
-            p.closed = true;
-            if (n > 3 && p.firstSegment.point.getDistance(p.lastSegment.point) < 0.01) {
-              p.removeSegment(n - 1);
-            }
-          } else {
-            continue;      // 真正开放：不参与合并
-          }
-        }
+        const p = parseShape(paper, c.d);
+        if (!p) continue;
+        const kids = p.className === 'CompoundPath' ? p.children : [p];
+        if (!kids.length) continue;
+        if (!ensureClosed(p)) continue;      // 真正开放：不参与合并
         items.push(p);
       }
       if (items.length < 2) continue;
@@ -712,8 +736,15 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
          两两配对归并每层总成本 O(n)，2000 个色块实测快约一个数量级 */
       const acc = uniteBalanced(items);
 
-      // 锚点简化：直线子路径走 D-P，含曲线子路径只清理冗余点
-      const pruned = pruneAnchors(acc, tolerance);
+      // 碎块清理：整组并集后的最大子路径面积仍然过小 → 判为碎块删除
+      if (doFilter && maxSubpathArea(acc) < minArea) {
+        g.list.forEach(c => drops.add(c));
+        done++;
+        continue;
+      }
+
+      // 锚点简化（含可选的边缘平滑）
+      const pruned = pruneAnchors(acc, tolerance, edgeSmooth);
       anchorsPruned += pruned;
 
       const node = acc.exportSVG({ precision: 2, asString: false });
@@ -736,6 +767,38 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     }
   }
 
+  /* ---------- 单元素组：同样做碎块清理与边缘平滑 ---------- */
+  if (doFilter || edgeSmooth > 0) {
+    onProgress?.(82, '清理碎块');
+    for (const [, list] of groups) {
+      if (list.length >= 2) continue;
+      const c = list[0];
+      try {
+        const p = parseShape(paper, c.d);
+        if (!p) continue;
+        const kids = p.className === 'CompoundPath' ? p.children : [p];
+        if (!kids.length) continue;
+        if (!ensureClosed(p)) continue;
+
+        if (doFilter && maxSubpathArea(p) < minArea) { drops.add(c); continue; }
+
+        if (edgeSmooth > 0) {
+          const changed = pruneAnchors(p, tolerance, edgeSmooth);
+          anchorsPruned += changed;
+          // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
+          if (changed > 0) {
+            stats.refinedShapes++;
+            const node = p.exportSVG({ precision: 2, asString: false });
+            const dOut = node.getAttribute('d');
+            if (dOut) {
+              elemResults.set(c.el, { d: dOut, rule: node.getAttribute('fill-rule') || 'nonzero' });
+            }
+          }
+        }
+      } catch (e) { /* 单个元素失败不影响整体 */ }
+    }
+  }
+
   /* ---------- 回插 DOM（保持 z 序） ---------- */
   onProgress?.(85, '写回结构');
   const groupIndex = new Map();
@@ -753,42 +816,56 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     'x', 'y', 'width', 'height', 'rx', 'ry', 'cx', 'cy', 'r', 'points'
   ]);
 
-  let merged = 0, removed = 0;
-  for (const c of candidates) {
-    const info = groupIndex.get(c.el);
-    if (!info) continue;
-    const res = results.get(info.key);
-    if (!res) continue;
-
-    if (!info.first) {
-      c.el.remove();
-      removed++;
-      continue;
-    }
-
+  /** 用处理后的 d 替换原元素（保留元数据属性，补祖先矩阵的逆） */
+  const applyShape = (c, d, rule) => {
     const newEl = doc.createElementNS(SVGNS, 'path');
     for (const attr of Array.from(c.el.attributes)) {
       if (DROP_ATTRS.has(attr.name.toLowerCase())) continue;
       newEl.setAttribute(attr.name, attr.value);
     }
-    /* 合并结果的 d 是绝对坐标；若原元素位于 <g transform> 内，
+    /* 结果的 d 是绝对坐标；若原元素位于 <g transform> 内，
        需要补上祖先矩阵的逆，抵消祖先变换，否则会被二次变换（图形跑位） */
     const inv = invertM(c.parentCtm);
     if (inv && !isIdentityM(inv)) {
       newEl.setAttribute('transform',
         'matrix(' + inv.map(v => Math.round(v * 1e6) / 1e6).join(' ') + ')');
     }
-    newEl.setAttribute('d', res.d);
-    newEl.setAttribute('fill', info.key);
-    if (res.rule === 'evenodd') newEl.setAttribute('fill-rule', 'evenodd');
+    newEl.setAttribute('d', d);
+    newEl.setAttribute('fill', c.key);
+    if (rule === 'evenodd') newEl.setAttribute('fill-rule', 'evenodd');
     c.el.replaceWith(newEl);
+  };
+
+  let merged = 0, removed = 0, dropped = 0, refined = 0;
+  for (const c of candidates) {
+    // 碎块清理：面积过小的孤立碎块直接删除
+    if (drops.has(c)) { c.el.remove(); dropped++; continue; }
+
+    const info = groupIndex.get(c.el);
+    const res = info ? results.get(info.key) : null;
+
+    if (!info || !res) {
+      // 未参与合并：若边缘平滑改动了它，用新 d 替换
+      const elem = elemResults.get(c.el);
+      if (elem) { applyShape(c, elem.d, elem.rule); refined++; }
+      continue;
+    }
+
+    if (!info.first) {
+      c.el.remove();
+      removed++;
+      continue;
+    }
+    applyShape(c, res.d, res.rule);
     merged++;
   }
 
-  stats.afterShapes = candidates.length - removed;
+  stats.afterShapes = candidates.length - removed - dropped;
   stats.mergedShapes = merged;
   stats.removedNodes = removed;
   stats.anchorsPruned = anchorsPruned;
+  stats.droppedFragments = dropped;
+  stats.refinedShapes = Math.max(stats.refinedShapes, refined);
   stats.mergeGroupsDone = results.size;      // 实际成功的组数（可能少于 mergeGroups）
 
   /* ---------- 序列化 ---------- */
@@ -803,9 +880,11 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   return { svg: out, stats, warnings };
 }
 
+/** 供测试直接调用（内部函数，生产流程不依赖） */
+export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, roundShallowCorners, turnAngleDeg };
+
 /** 把各类跳过统计汇总成用户可读的提示 */
-function pushSkipWarnings(warnings, skipped) {
-  if (skipped.gradient) warnings.push(skipped.gradient + ' 个渐变/图案填充路径已跳过合并');
+function pushSkipWarnings(warnings, skipped) {  if (skipped.gradient) warnings.push(skipped.gradient + ' 个渐变/图案填充路径已跳过合并');
   if (skipped.masked) warnings.push(skipped.masked + ' 个带遮罩（clip-path/mask）的对象已跳过');
   if (skipped.open) warnings.push(skipped.open + ' 个开放线条/无填充路径已跳过');
   if (skipped.semiTransparent) warnings.push(skipped.semiTransparent + ' 个半透明对象已跳过（合并会改变叠加效果）');
@@ -815,13 +894,133 @@ function pushSkipWarnings(warnings, skipped) {
 }
 
 /**
- * 锚点简化：
- *   - 子路径全部为直线段 → Douglas-Peucker（偏差 ≤ tol，不引入曲线）
- *   - 含曲线段的子路径 → 仅移除重复点与共线冗余点（曲线保持原样）
- * @returns {number} 移除的锚点总数
+ * 三点转角：偏离「直线」的度数（0 = 完全共线，90 = 直角）
  */
-function pruneAnchors(item, tol) {
-  let removedCount = 0;
+function turnAngleDeg(a, b, c) {
+  const v1x = a.x - b.x, v1y = a.y - b.y;
+  const v2x = c.x - b.x, v2y = c.y - b.y;
+  const len1 = Math.hypot(v1x, v1y), len2 = Math.hypot(v2x, v2y);
+  if (len1 < 1e-9 || len2 < 1e-9) return 0;
+  let cos = (v1x * v2x + v1y * v2y) / (len1 * len2);
+  cos = cos > 1 ? 1 : cos < -1 ? -1 : cos;
+  const ang = Math.acos(cos) * 180 / Math.PI;   // 0 = 折返，180 = 直线
+  return 180 - ang;
+}
+
+/** 直线段标记：段 i → i+1 是否为零句柄的直线 */
+function straightFlags(segs) {
+  const n = segs.length;
+  const flags = new Array(n);
+  for (let i = 0; i < n; i++) {
+    flags[i] = segs[i].handleOut.isZero() && segs[(i + 1) % n].handleIn.isZero();
+  }
+  return flags;
+}
+
+/**
+ * 对「纯折线区间」做 Douglas-Peucker。
+ * 含曲线的子路径不能整体 D-P（会破坏曲线），但其中的直线段序列可以按容差
+ * 删除抖动锚点——这是消除锯齿边缘的关键一步，且偏差有上界（= tol），不会变形。
+ */
+function dpSimplifyStraightRuns(p, tol) {
+  const segs = p.segments;
+  const n = segs.length;
+  if (n < 4) return 0;
+  const flags = straightFlags(segs);
+
+  // 从一个非直线段之后开始，避免区间跨越数组首尾
+  let base = 0;
+  let found = false;
+  for (let i = 0; i < n; i++) {
+    if (!flags[i]) { base = (i + 1) % n; found = true; break; }
+  }
+  if (!found) return 0;                  // 全直线子路径由调用方另行处理
+
+  const runs = [];
+  let cur = null;
+  for (let k = 0; k < n; k++) {
+    const i = (base + k) % n;
+    if (flags[i]) {
+      if (cur) cur.push(i);
+      else cur = [i];
+    } else if (cur) {
+      runs.push(cur);
+      cur = null;
+    }
+  }
+  if (cur) runs.push(cur);
+
+  let removed = 0;
+  for (const run of runs) {
+    const pts = [];
+    for (const si of run) pts.push({ x: segs[si].point.x, y: segs[si].point.y, si });
+    const lastSi = run[run.length - 1];
+    const endIdx = (lastSi + 1) % n;
+    pts.push({ x: segs[endIdx].point.x, y: segs[endIdx].point.y, si: endIdx });
+    if (pts.length < 3) continue;
+
+    const keep = dpKeep(pts, tol);
+    const del = [];
+    for (let i = 1; i < pts.length - 1; i++) if (!keep[i]) del.push(pts[i].si);
+    del.sort((a, b) => b - a);           // 从后往前删，索引不失效
+    for (const si of del) {
+      if (p.segments.length <= 3) break;
+      p.removeSegment(si);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+/**
+ * 轻度曲线化（边缘平滑档位 2–3）：
+ * 只对「转角很浅」的折点生成对称句柄，把锯齿圆滑掉；
+ * 转角超过阈值的点（接近直角/锐角）一律跳过，硬边不会被磨圆。
+ */
+const ROUND_LEVELS = {
+  2: { maxTurn: 28, k: 0.16 },
+  3: { maxTurn: 42, k: 0.24 }
+};
+
+function roundShallowCorners(p, level) {
+  const cfg = ROUND_LEVELS[level];
+  if (!cfg) return 0;
+  const segs = p.segments;
+  const n = segs.length;
+  if (n < 4) return 0;
+  let changed = 0;
+  for (let i = 0; i < n; i++) {
+    const prev = segs[(i - 1 + n) % n];
+    const cur = segs[i];
+    const next = segs[(i + 1) % n];
+    if (!prev.handleOut.isZero() || !cur.handleIn.isZero()) continue;
+    if (!cur.handleOut.isZero() || !next.handleIn.isZero()) continue;
+
+    const turn = turnAngleDeg(prev.point, cur.point, next.point);
+    if (turn > cfg.maxTurn) continue;    // 硬边保护
+
+    const dPrev = cur.point.getDistance(prev.point);
+    const dNext = cur.point.getDistance(next.point);
+    const minD = Math.min(dPrev, dNext);
+    if (minD < 0.8) continue;
+
+    const len = minD * cfg.k;
+    cur.handleIn = prev.point.subtract(cur.point).normalize(len);
+    cur.handleOut = next.point.subtract(cur.point).normalize(len);
+    changed++;
+  }
+  return changed;
+}
+
+/**
+ * 锚点精简与边缘平滑：
+ *   - 全直线子路径 → 整环 Douglas-Peucker（偏差 ≤ tol）
+ *   - 含曲线子路径 → 仅对其中「纯折线区间」做 D-P（曲线段原样保留）
+ *   - smoothLevel ≥ 2 → 再对浅转角做轻度曲线化（硬边受转角阈值保护）
+ * @returns {number} 移除／改动的锚点总数
+ */
+function pruneAnchors(item, tol, smoothLevel = 0) {
+  let count = 0;
   const children = item.className === 'CompoundPath' ? item.children.slice() : [item];
 
   for (const p of children) {
@@ -835,49 +1034,47 @@ function pruneAnchors(item, tol) {
     });
 
     if (allStraight) {
-      /* 全直线闭合环：以两个相距较远的锚点 a、b 把环拆成两段，各做 D-P。
-         注意全程使用**原始 segment 索引**（曾把环索引当 segment 索引删除，会删错点破坏形状） */
+      /* 全直线闭合环：用 K 个「等分锚点」把环切成若干小段，段内做 D-P。
+         关键教训：初始弦必须是**局部**的。曾用「最远点对」作初始弦，
+         弦会横跨形状内部，环上所有点都被判为偏离过大，简化完全不生效。 */
       const pts = segs.map(s => ({ x: s.point.x, y: s.point.y }));
       const n = pts.length;
-      const [a, b] = ringAnchors(pts);            // 返回升序 a < b
+      const K = Math.max(3, Math.min(16, Math.round(n / 8) || 3));
+      const anchors = [];
+      for (let k = 0; k < K; k++) anchors.push(Math.round(k * n / K) % n);
+      anchors[0] = 0;
 
       const keep = new Uint8Array(n);
-      keep[a] = 1;
-      keep[b] = 1;
+      for (const ai of anchors) keep[ai] = 1;
 
-      // 段 1：a → b（正向）
-      const idx1 = [];
-      for (let i = a; i <= b; i++) idx1.push(i);
-      if (idx1.length > 2) {
-        const k1 = dpKeep(idx1.map(i => pts[i]), tol);
-        idx1.forEach((oi, j) => { if (k1[j]) keep[oi] = 1; });
-      }
-
-      // 段 2：b → 环回 a（跨越数组末端）
-      const idx2 = [];
-      for (let i = b; i < n; i++) idx2.push(i);
-      for (let i = 0; i <= a; i++) idx2.push(i);
-      if (idx2.length > 2) {
-        const k2 = dpKeep(idx2.map(i => pts[i]), tol);
-        idx2.forEach((oi, j) => { if (k2[j]) keep[oi] = 1; });
+      for (let k = 0; k < anchors.length; k++) {
+        const from = anchors[k];
+        const to = anchors[(k + 1) % anchors.length];
+        const idx = [];
+        let i = from;
+        let guard = 0;
+        while (guard++ <= n) {
+          idx.push(i);
+          if (i === to) break;
+          i = (i + 1) % n;
+        }
+        if (idx.length > 2) {
+          const kk = dpKeep(idx.map(x => pts[x]), tol);
+          idx.forEach((oi, j) => { if (kk[j]) keep[oi] = 1; });
+        }
       }
 
       for (let i = n - 1; i >= 0; i--) {
-        if (!keep[i]) { p.removeSegment(i); removedCount++; }
+        if (!keep[i]) { p.removeSegment(i); count++; }
       }
     } else {
-      // 含曲线：只清理重复点与「直线段上的共线点」，绝不改曲线
-      for (let i = segs.length - 1; i >= 0 && segs.length > 3; i--) {
-        const prev = segs[(i - 1 + segs.length) % segs.length];
-        const cur = segs[i];
-        const next = segs[(i + 1) % segs.length];
-        const straightBefore = prev.handleOut.isZero() && cur.handleIn.isZero();
-        const straightAfter = cur.handleOut.isZero() && next.handleIn.isZero();
-        if (!straightBefore || !straightAfter) continue;
-        const d = segDist(cur.point, prev.point, next.point);
-        if (d <= tol) { p.removeSegment(i); removedCount++; }
-      }
+      // 含曲线：只对纯折线区间做 D-P，曲线段不动
+      count += dpSimplifyStraightRuns(p, tol);
+    }
+
+    if (smoothLevel >= 2) {
+      count += roundShallowCorners(p, smoothLevel);
     }
   }
-  return removedCount;
+  return count;
 }

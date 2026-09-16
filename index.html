@@ -794,6 +794,58 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </div>
       </div>
 
+      <div class="card collapsible" id="foldPost">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldPostBody">
+          <h3>矢量后处理</h3>
+          <span class="card-sum" id="sumPost"></span>
+          <span class="caret">›</span>
+        </button>
+        <div class="card-body" id="foldPostBody">
+          <div class="row" style="margin:0">
+            <label for="mergeOn" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
+              ?
+              <span class="tip-pop" role="tooltip">把填充色相同的闭合路径做<b>几何布尔并集</b>合并为单一路径，重叠区域真正合并（不同于 SVGO 的字符串拼接）。可大幅减少 CorelDRAW 等软件的对象数量与卡顿。开放线条、描边轮廓、渐变／图案填充、遮罩内对象、位图均不参与。需与「图像预处理」的颜色量化配合，单独使用收益有限。</span>
+            </span>
+            <input type="checkbox" id="mergeOn" checked>
+          </div>
+          <div class="row" id="mergeTolRow" style="margin-top:12px;margin-bottom:0">
+            <label for="mergeTol">锚点简化容差 <span class="hint">px</span></label>
+            <input type="range" id="mergeTol" min="1" max="200" value="50">
+            <output id="mergeTolV">0.50</output>
+          </div>
+
+          <div class="row" style="margin-top:16px;margin-bottom:0">
+            <label for="fragOn" style="cursor:pointer;font-weight:600;color:var(--text)">碎块清理</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="碎块清理说明">
+              ?
+              <span class="tip-pop" role="tooltip">删除面积小于阈值的孤立碎块（描摹与减色残留的噪点块）。阈值单位为像素面积，建议 4–10；设得过大可能误删细小但真实的元素（如高光点、细小文字笔画）。</span>
+            </span>
+            <input type="checkbox" id="fragOn" checked>
+          </div>
+          <div class="row" id="fragRow" style="margin-top:12px;margin-bottom:0">
+            <label for="fragTol">面积阈值 <span class="hint">px²</span></label>
+            <input type="range" id="fragTol" min="1" max="60" value="6">
+            <output id="fragTolV">6</output>
+          </div>
+
+          <div class="row" style="margin-top:16px;margin-bottom:0">
+            <label for="smoothEdge">边缘平滑</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="边缘平滑说明">
+              ?
+              <span class="tip-pop" role="tooltip">1 档：仅在容差内删除边缘抖动锚点（零变形，安全）；2–3 档：额外对<b>很浅的转角</b>做轻度曲线化，让边界圆润。直角与锐角受转角阈值保护，不会被磨圆。<br>注意：容差必须大于边缘抖动的峰峰值才会删点——边缘抖动典型峰峰值为 0.5–2px，故容差建议 0.5 以上。</span>
+            </span>
+            <input type="range" id="smoothEdge" min="0" max="3" value="1">
+            <output id="smoothEdgeV">1</output>
+          </div>
+
+          <div class="hint hidden" id="mergeStatus" style="margin-top:12px"></div>
+          <div class="hint" style="margin-top:10px">
+            后处理在本地完成，决定最终交稿文件里的图形对象数
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="row" style="margin:0">
           <label for="svgoOn" style="cursor:pointer;font-weight:600;color:var(--text)">输出时用 SVGO 优化路径</label>
@@ -814,22 +866,6 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             <option value="modern">标准 SVG</option>
             <option value="legacy">CorelDRAW X4 等老软件</option>
           </select>
-        </div>
-        <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
-          <div class="row" style="margin:0">
-            <label for="mergeOn" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
-            <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
-              ?
-              <span class="tip-pop" role="tooltip">把填充色相同的闭合路径做<b>几何布尔并集</b>合并为单一路径，重叠区域真正合并（不同于 SVGO 的字符串拼接）。可大幅减少 CorelDRAW 等软件的对象数量与卡顿。开放线条、描边轮廓、渐变／图案填充、遮罩内对象、位图均不参与。</span>
-            </span>
-            <input type="checkbox" id="mergeOn" checked>
-          </div>
-          <div class="row" id="mergeTolRow" style="margin-top:12px;margin-bottom:0">
-            <label for="mergeTol">锚点简化容差 <span class="hint">px</span></label>
-            <input type="range" id="mergeTol" min="1" max="20" value="5">
-            <output id="mergeTolV">0.05</output>
-          </div>
-          <div class="hint hidden" id="mergeStatus" style="margin-top:8px"></div>
         </div>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
           <div class="row" style="margin:0">
@@ -1127,6 +1163,55 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         <div id="file3"></div>
       </div>
 
+      <div class="card collapsible" id="foldPost3">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldPostBody3">
+          <h3>矢量后处理</h3>
+          <span class="card-sum" id="sumPost3"></span>
+          <span class="caret">›</span>
+        </button>
+        <div class="card-body" id="foldPostBody3">
+          <div class="row" style="margin:0">
+            <label for="mergeOn3" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
+              ?
+              <span class="tip-pop" role="tooltip">把填充色相同的闭合路径做<b>几何布尔并集</b>合并为单一路径（几何级合并，非 SVGO 的字符串拼接）。开放线条、描边轮廓、渐变／图案填充、遮罩内对象、位图均不参与。</span>
+            </span>
+            <input type="checkbox" id="mergeOn3" checked>
+          </div>
+          <div class="row" id="mergeTolRow3" style="margin-top:12px;margin-bottom:0">
+            <label for="mergeTol3">锚点简化容差 <span class="hint">px</span></label>
+            <input type="range" id="mergeTol3" min="1" max="200" value="50">
+            <output id="mergeTolV3">0.50</output>
+          </div>
+
+          <div class="row" style="margin-top:16px;margin-bottom:0">
+            <label for="fragOn3" style="cursor:pointer;font-weight:600;color:var(--text)">碎块清理</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="碎块清理说明">
+              ?
+              <span class="tip-pop" role="tooltip">删除面积小于阈值的孤立碎块。阈值单位为像素面积，建议 4–10；设得过大可能误删细小但真实的元素。</span>
+            </span>
+            <input type="checkbox" id="fragOn3" checked>
+          </div>
+          <div class="row" id="fragRow3" style="margin-top:12px;margin-bottom:0">
+            <label for="fragTol3">面积阈值 <span class="hint">px²</span></label>
+            <input type="range" id="fragTol3" min="1" max="60" value="6">
+            <output id="fragTolV3">6</output>
+          </div>
+
+          <div class="row" style="margin-top:16px;margin-bottom:0">
+            <label for="smoothEdge3">边缘平滑</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="边缘平滑说明">
+              ?
+              <span class="tip-pop" role="tooltip">1 档：仅在容差内删除边缘抖动锚点（零变形）；2–3 档：额外对很浅的转角做轻度曲线化。直角与锐角受保护。<br>注意：容差需大于抖动峰峰值才会删点，建议 0.5 以上。</span>
+            </span>
+            <input type="range" id="smoothEdge3" min="0" max="3" value="1">
+            <output id="smoothEdgeV3">1</output>
+          </div>
+
+          <div class="hint hidden" id="mergeStatus3" style="margin-top:12px"></div>
+        </div>
+      </div>
+
       <div class="card">
         <h3>优化选项</h3>
         <label class="row" style="cursor:pointer">
@@ -1151,22 +1236,6 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <input type="checkbox" id="optGzip">
           <span style="flex:1;font-weight:600">同时输出 SVGZ（gzip）</span>
         </label>
-        <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
-          <div class="row" style="margin:0">
-            <label for="mergeOn3" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
-            <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
-              ?
-              <span class="tip-pop" role="tooltip">把填充色相同的闭合路径做<b>几何布尔并集</b>合并为单一路径，几何级合并（非 SVGO 的字符串拼接）。可大幅减少 CorelDRAW 等软件的对象数量与卡顿。开放线条、描边轮廓、渐变／图案填充、遮罩内对象、位图均不参与。</span>
-            </span>
-            <input type="checkbox" id="mergeOn3" checked>
-          </div>
-          <div class="row" id="mergeTolRow3" style="margin-top:12px;margin-bottom:0">
-            <label for="mergeTol3">锚点简化容差 <span class="hint">px</span></label>
-            <input type="range" id="mergeTol3" min="1" max="20" value="5">
-            <output id="mergeTolV3">0.05</output>
-          </div>
-          <div class="hint hidden" id="mergeStatus3" style="margin-top:8px"></div>
-        </div>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
           <div class="row" style="margin:0">
             <label for="epsTransparent3" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
