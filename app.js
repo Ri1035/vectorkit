@@ -582,19 +582,6 @@ function wireFold(rootId, defaultOpen = false, group = null) {
   };
 }
 
-/** 某个折叠面板展开时，重新计算其内容高度 */
-function syncFoldHeight(rootId) {
-  const root = document.getElementById(rootId);
-  if (root && typeof root._syncHeight === 'function') root._syncHeight();
-}
-
-function setFoldSummary(presetText, paramsText) {
-  const a = document.getElementById('sumEngine');
-  const b = document.getElementById('sumParams');
-  if (a && presetText) a.textContent = presetText;
-  if (b && paramsText !== undefined) b.textContent = paramsText;
-}
-
 const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
 
 /* ============================ 预设与参数 ============================ */
@@ -671,7 +658,6 @@ function renderPresets() {
     });
     host.appendChild(b);
   });
-  setFoldSummary(ENGINE_LABEL[S1.engine] + ' · ' + PRESETS[S1.engine][S1.preset].name);
 }
 
 function sliderRow(def, val, onChange) {
@@ -694,7 +680,7 @@ function renderParams() {
 
   SCHEMA[S1.engine].forEach(def => {
     const val = opts[def.key] !== undefined ? opts[def.key] : (def.def !== undefined ? def.def : def.min);
-    host.appendChild(sliderRow(def, val, updateParamSummary));
+    host.appendChild(sliderRow(def, val));
   });
 
   const advHost = $('#advBox');
@@ -710,22 +696,9 @@ function renderParams() {
       advHost.appendChild(row);
     } else {
       const val = opts[def.key] !== undefined ? opts[def.key] : (def.def !== undefined ? def.def : def.min);
-      advHost.appendChild(sliderRow(def, val, updateParamSummary));
+      advHost.appendChild(sliderRow(def, val));
     }
   });
-
-  updateParamSummary();
-}
-
-/** 折叠状态下，在「参数」标题右侧显示前两项参数值 */
-function updateParamSummary() {
-  const rows = $$('#params .row');
-  const parts = SCHEMA[S1.engine].slice(0, 2).map((def, i) => {
-    const el = rows[i] ? rows[i].querySelector('input') : null;
-    const label = def.label.split(/[（(]/)[0].trim();
-    return label + ' ' + (el ? el.value : '');
-  });
-  setFoldSummary(undefined, parts.join(' · '));
 }
 
 function collectOptions() {

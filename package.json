@@ -3,7 +3,7 @@
   "version": "1.4.0",
   "private": true,
   "type": "module",
-  "description": "纯前端矢量转换器：位图转 SVG、SVG 转位图、SVG 优化压缩，全部在浏览器本地完成",
+  "description": "纯前端矢量转换器：位图转 SVG、SVG 转位图与位图、CMYK EPS 导出、SVG 优化压缩、去背景，全部在浏览器本地完成",
   "scripts": {
     "dev": "node serve.mjs 5188",
     "start": "node serve.mjs 5188",

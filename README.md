@@ -1,22 +1,30 @@
 # VectorKit
 
-纯前端矢量转换器 demo。文件的解析、转换、压缩**全部在浏览器本地完成**，不上传任何服务器，也不产生任何网络请求。
+纯前端矢量转换器。文件的解析、转换、压缩**全部在浏览器本地完成**，不上传任何服务器，也不产生任何网络请求。
 
 - 线上地址：https://vectorkit.pages.dev
 - 代码仓库：https://github.com/Ri1035/vectorkit
+- 更新日志：[CHANGELOG.md](CHANGELOG.md)
 
 ## 功能
 
 ### 1. 位图 → 矢量
 
 - 输入：PNG / JPG / WebP / GIF / BMP
-- 双引擎：VTracer（彩色描摹）+ Potrace（黑白描摹 / 彩色海报化）
+- 双引擎：VTracer（彩色描摹）+ Potrace（黑白描摹 / 彩色海报化），均可随时切换
 - 5 个 VTracer 预设 + 4 个 Potrace 预设，参数可微调
+- **图像预处理**：降采样、中值去噪、双边保边平滑、中值切割颜色量化——从源头减少色块数量
+- **矢量后处理**：
+  - 碎块清理（按面积删除孤立噪点块）
+  - 边缘平滑（近直线曲线转直 + 曲线重采样简化 + 浅转角曲线化，硬边受转角阈值保护）
+  - 同色路径合并（Paper.js 几何布尔并集，真正减少图形对象数，非字符串拼接）
+- **参数模板**：6 个一键套用的整套配置（我的常用 / 节点精简 / 极小文件 / 高保真 / 多色照片 / 线稿印章）
+- **CMYK EPS 导出**：印刷用四色 EPS，支持透明底；合并后的图形对象数即 EPS 内的填充操作数
 - 输出对比预览与统计（体积 / 路径数 / 节点数 / 耗时）
 
 ### 2. 矢量 → 位图
 
-- SVG → PNG / WebP / JPEG
+- SVG → PNG / WebP / JPEG（resvg 渲染）
 - 1×–4× 倍率，透明 / 白 / 黑 / 自定义背景
 - 质量与尺寸可调
 
@@ -25,6 +33,17 @@
 - 移除元数据、注释、空容器
 - 坐标精度压缩
 - 可选同时输出 SVGZ（gzip）
+- 支持先做矢量后处理（合并 / 碎块清理 / 边缘平滑）再压缩
+
+### 4. 去背景
+
+- 纯色背景一键去除（本地色度分析，无需模型下载）
+
+## 界面
+
+- 左列：输入图片 + 「设置」大卡片（模板 / 引擎 / 参数 / 预处理 / 后处理 / 输出 六个切换页，点谁显示谁）
+- 右列：主操作按钮 + 前后对比预览 + 下载（SVG / EPS）
+- 优化压缩页对「CorelDRAW X4 等老软件」做了兼容输出（绝对坐标 + 内联样式）
 
 ## 运行
 
@@ -42,20 +61,28 @@ npm run dev
 ```
 index.html            界面与样式
 app.js                应用逻辑（ESM）
+preprocess.js         位图预处理（降采样 / 去噪 / 双边滤波 / 颜色量化）
+merge-paths.js        矢量后处理（同色合并 / 碎块清理 / 边缘平滑）
+eps-export.js         SVG → CMYK EPS 转换
+svg-compat.js         老软件兼容模式输出
+matte.js              去背景
+cmyk.js               RGB → CMYK 分色
 serve.mjs             本地静态服务器
+build.mjs             构建 dist/
 build-vtracer.mjs     生成 vendor/vtracer.js 的脚本
-vendor/
-  vtracer.js              VTracer 浏览器封装（由脚本生成）
-  vtracer_wasm_bg.wasm    VTracer 引擎（652 KB）
-  potrace.js              Potrace 引擎（wasm 内嵌，74 KB）
+deploy.mjs            Cloudflare Pages 部署
+vendor/               引擎文件（见下表）
 ```
 
-## 引擎说明
+## 引擎与依赖
 
-| 引擎 | 来源 | 许可 | 用途 |
+| 引擎 / 库 | 来源 | 许可 | 用途 |
 |---|---|---|---|
 | VTracer | `@visioncortex/vtracer` | MIT OR Apache-2.0 | 彩色描摹（官方 wasm 构建） |
 | Potrace | `esm-potrace-wasm` | GPL-2.0 | 黑白描摹、彩色海报化 |
+| resvg | `@resvg/resvg-wasm` | MPL-2.0 | SVG → 位图渲染 |
+| SVGO | `svgo` | MIT | SVG 优化压缩 |
+| Paper.js | `paper` | MIT | 几何布尔并集、路径分析 |
 
 ### 为什么需要 `build-vtracer.mjs`
 
@@ -68,16 +95,18 @@ vendor/
 
 ## 能力边界
 
-这个 demo 严格限定在**纯前端能做到的范围内**：
+这个工具严格限定在**纯前端能做到的范围内**：
 
 **能做**
 - 位图 ⇄ 矢量（WASM 引擎，质量好、速度快）
+- SVG → CMYK EPS（自研转换器，面向印刷）
 - SVG 生态内转换与优化压缩
+- 纯色背景去除
 
 **做不到**（需要服务端引擎或原厂内核）
-- AI / EPS / PS 等 PostScript 系格式
+- AI / PS / PDF 等 PostScript 系复合格式（EPS 是自研的有限子集输出，不是完整 PostScript 解析）
 - CDR / CDT / CMX / XAR / SK1 等专有二进制格式
-- 旧版 VSD
+- 复杂背景的智能抠图（当前仅支持纯色背景）
 
 ## 部署
 
