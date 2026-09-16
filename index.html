@@ -764,8 +764,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
                 <span class="tip-pop" role="tooltip">双边滤波：抹平渐变过渡与纹理，但保留轮廓边界。强度过高会让细小的真实细节一起消失。</span>
               </span>
             </label>
-            <input type="range" id="preSmooth" min="0" max="3" value="1">
-            <output id="preSmoothV">1</output>
+            <input type="range" id="preSmooth" min="0" max="3" value="0">
+            <output id="preSmoothV">0</output>
           </div>
           <div class="row" style="margin-bottom:0">
             <label for="preColors">颜色数上限
@@ -775,13 +775,13 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
               </span>
             </label>
             <select id="preColors">
-              <option value="0">不限</option>
+              <option value="0" selected>不限</option>
               <option value="4">4 色（专色 / 扁平）</option>
               <option value="8">8 色</option>
               <option value="16">16 色</option>
               <option value="24">24 色</option>
               <option value="32">32 色</option>
-              <option value="48" selected>48 色（推荐）</option>
+              <option value="48">48 色（推荐）</option>
               <option value="64">64 色</option>
             </select>
           </div>
@@ -864,7 +864,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           </label>
           <select id="exportMode">
             <option value="modern">标准 SVG</option>
-            <option value="legacy">CorelDRAW X4 等老软件</option>
+            <option value="legacy" selected>CorelDRAW X4 等老软件</option>
           </select>
         </div>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
@@ -874,16 +874,16 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
               ?
               <span class="tip-pop" role="tooltip">「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，背景即纸张／下承印物，不勾选则输出白底。EPS 无 alpha 通道，半透明会按不透明处理。</span>
             </span>
-            <input type="checkbox" id="epsTransparent">
+            <input type="checkbox" id="epsTransparent" checked>
           </div>
           <div class="hint hidden" id="epsStatus" style="margin-top:8px"></div>
         </div>
       </div>
 
-      <button class="btn" id="run1" type="button" disabled>开始转换</button>
     </div>
 
     <div class="col">
+      <button class="btn" id="run1" type="button" disabled>开始转换</button>
       <div class="stage">
         <div class="stage-head">
           <span class="ttl">预览对比</span>
@@ -986,10 +986,10 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </div>
       </div>
 
-      <button class="btn" id="run2" type="button" disabled>生成位图</button>
     </div>
 
     <div class="col">
+      <button class="btn" id="run2" type="button" disabled>生成位图</button>
       <div class="stage">
         <div class="stage-head">
           <span class="ttl">渲染结果</span>
@@ -1114,10 +1114,10 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         <div class="hint" style="margin-top:2px">透明底建议选 PNG 或 WebP；JPG 不支持透明</div>
       </div>
 
-      <button class="btn" id="run4" type="button" disabled>开始去背景</button>
     </div>
 
     <div class="col">
+      <button class="btn" id="run4" type="button" disabled>开始去背景</button>
       <div class="stage">
         <div class="stage-head">
           <span class="ttl">抠图结果</span>
@@ -1243,16 +1243,16 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
               ?
               <span class="tip-pop" role="tooltip">「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，背景即纸张／下承印物，不勾选则输出白底。</span>
             </span>
-            <input type="checkbox" id="epsTransparent3">
+            <input type="checkbox" id="epsTransparent3" checked>
           </div>
           <div class="hint hidden" id="epsStatus3" style="margin-top:8px"></div>
         </div>
       </div>
 
-      <button class="btn" id="run3" type="button" disabled>开始优化</button>
     </div>
 
     <div class="col">
+      <button class="btn" id="run3" type="button" disabled>开始优化</button>
       <div class="stage">
         <div class="stage-head">
           <span class="ttl">优化结果</span>
