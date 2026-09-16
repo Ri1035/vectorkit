@@ -449,13 +449,13 @@ function wireDevPanel() {
 
 function updateOutputSummaries() {
   const svgoOn = $('#svgoOn');
-  if (svgoOn) {
-    const legacy = $('#exportMode').value === 'legacy';
-    $('#sumSvgo').textContent = (svgoOn.checked ? 'SVGO 开' : 'SVGO 关')
-      + ' · ' + (legacy ? '老软件兼容' : '标准 SVG');
-  }
   const eps1 = $('#epsTransparent');
-  if (eps1) $('#sumEps').textContent = eps1.checked ? '透明底' : '白底';
+  if (svgoOn && eps1) {
+    const legacy = $('#exportMode').value === 'legacy';
+    $('#sumOut').textContent = (svgoOn.checked ? 'SVGO 开' : 'SVGO 关')
+      + ' · ' + (legacy ? '老软件兼容' : '标准 SVG')
+      + ' · ' + (eps1.checked ? '透明底' : '白底');
+  }
   const eps3 = $('#epsTransparent3');
   if (eps3) $('#sumEps3').textContent = eps3.checked ? '透明底' : '白底';
   const optSvgo = $('#optSvgo');
@@ -532,9 +532,14 @@ updatePreSummary();
  * 用内联样式直接驱动（而非依赖 class 规则）：实测在部分环境下
  * `.collapsible.open .card-body` 虽然 matches() 为 true，但样式不会被应用，
  * 内联方式可稳定生效。
+ *
+ * 同一 group 的卡片为手风琴模式：同时只展开一个，展开新的自动收起旧的，
+ * 避免左列全部展开后页面过长。收起状态靠卡片摘要行查看配置。
  */
 
-function wireFold(rootId, defaultOpen = false) {
+const FOLD_GROUPS = {};
+
+function wireFold(rootId, defaultOpen = false, group = null) {
   const root = document.getElementById(rootId);
   if (!root) return;
   const head = root.querySelector('.card-head');
@@ -545,6 +550,11 @@ function wireFold(rootId, defaultOpen = false) {
     root.classList.toggle('open', open);
     head.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {
+      if (group) {
+        (FOLD_GROUPS[group] || []).forEach(other => {
+          if (other !== root && other.classList.contains('open') && other._apply) other._apply(false);
+        });
+      }
       const setH = () => { body.style.maxHeight = (body.scrollHeight + 40) + 'px'; };
       setH();
       // 字体/图标加载完成后内容实际高度会变，二次校准避免底部被裁
@@ -558,13 +568,15 @@ function wireFold(rootId, defaultOpen = false) {
       body.style.marginTop = '0px';
     }
   };
+  root._apply = apply;
 
+  if (group) (FOLD_GROUPS[group] = FOLD_GROUPS[group] || []).push(root);
   apply(defaultOpen);
   head.addEventListener('click', () => apply(!root.classList.contains('open')));
 
   // 内容高度变化时（如切换引擎导致预设数量变化），同步展开态高度
   root._syncHeight = () => {
-    if (root.classList.contains('open')) body.style.maxHeight = (body.scrollHeight + 32) + 'px';
+    if (root.classList.contains('open')) body.style.maxHeight = (body.scrollHeight + 40) + 'px';
   };
 }
 
@@ -2031,16 +2043,16 @@ $('#demo4').addEventListener('click', async () => {
 /* ============================ 启动 ============================ */
 
 wireDevPanel();
-wireFold('foldEngine');
-wireFold('foldParams');
-wireFold('foldTpl', true);
-wireFold('foldPre');
-wireFold('foldPost');
-wireFold('foldPost3');
-wireFold('foldSvgo');
-wireFold('foldEps');
-wireFold('foldEps3');
-wireFold('foldOpt');
+/* 左列设置卡片手风琴：同时只展开一个，页面长度恒定 */
+wireFold('foldEngine', false, 'settings');
+wireFold('foldParams', false, 'settings');
+wireFold('foldTpl', true, 'settings');
+wireFold('foldPre', false, 'settings');
+wireFold('foldPost', false, 'settings');
+wireFold('foldOut', false, 'settings');
+wireFold('foldPost3', false, 'settings3');
+wireFold('foldOpt', true, 'settings3');
+wireFold('foldEps3', false, 'settings3');
 renderPresets();
 renderParams();
 renderTemplates();

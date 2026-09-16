@@ -845,22 +845,22 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </div>
       </div>
 
-      <div class="card collapsible" id="foldSvgo">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldSvgoBody">
-          <h3>SVG 优化</h3>
-          <span class="card-sum" id="sumSvgo"></span>
+      <div class="card collapsible" id="foldOut">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldOutBody">
+          <h3>输出设置</h3>
+          <span class="card-sum" id="sumOut"></span>
           <span class="caret">›</span>
         </button>
-        <div class="card-body" id="foldSvgoBody">
+        <div class="card-body" id="foldOutBody">
           <div class="row" style="margin:0">
-            <label for="svgoOn" style="cursor:pointer;font-weight:600;color:var(--text)">输出时用 SVGO 优化路径</label>
+            <label for="svgoOn" style="cursor:pointer;font-weight:600;color:var(--text)">SVGO 优化路径</label>
             <span class="tip" tabindex="0" aria-label="SVGO 优化说明">
               ?
               <span class="tip-pop" role="tooltip">精简冗余节点与坐标精度，通常可减小 30–70% 体积。导入 CorelDRAW 等老软件时可关闭，配合「导出兼容性」使用。</span>
             </span>
             <input type="checkbox" id="svgoOn" checked>
           </div>
-          <div class="row" style="margin-top:16px;margin-bottom:0">
+          <div class="row" style="margin-top:14px;margin-bottom:0">
             <label for="exportMode">导出兼容性
               <span class="tip" tabindex="0" aria-label="导出兼容性说明">
                 ?
@@ -872,25 +872,17 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
               <option value="legacy" selected>CorelDRAW X4 等老软件</option>
             </select>
           </div>
-        </div>
-      </div>
-
-      <div class="card collapsible" id="foldEps">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldEpsBody">
-          <h3>CMYK EPS</h3>
-          <span class="card-sum" id="sumEps"></span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldEpsBody">
-          <div class="row" style="margin:0">
-            <label for="epsTransparent" style="cursor:pointer;font-weight:600;color:var(--text)">导出时使用透明底</label>
-            <span class="tip anchor-right" tabindex="0" aria-label="CMYK EPS 说明">
-              ?
-              <span class="tip-pop" role="tooltip">「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，背景即纸张／下承印物，不勾选则输出白底。EPS 无 alpha 通道，半透明会按不透明处理。</span>
-            </span>
-            <input type="checkbox" id="epsTransparent" checked>
+          <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
+            <div class="row" style="margin:0">
+              <label for="epsTransparent" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
+              <span class="tip anchor-right" tabindex="0" aria-label="CMYK EPS 说明">
+                ?
+                <span class="tip-pop" role="tooltip">「下载 EPS」输出印刷用 CMYK 文件；透明底不铺白底矩形，背景即纸张／下承印物，不勾选则输出白底。EPS 无 alpha 通道，半透明会按不透明处理。</span>
+              </span>
+              <input type="checkbox" id="epsTransparent" checked>
+            </div>
+            <div class="hint hidden" id="epsStatus" style="margin-top:10px"></div>
           </div>
-          <div class="hint hidden" id="epsStatus" style="margin-top:10px"></div>
         </div>
       </div>
 
