@@ -13,7 +13,7 @@ if (fs.existsSync(dist)) {
   fs.mkdirSync(dist, { recursive: true });
 }
 
-const files = ['index.html', 'app.js', 'matte.js', 'cmyk.js', 'eps-export.js', 'merge-paths.js', 'svg-compat.js', 'README.md'];
+const files = ['index.html', 'app.js', 'matte.js', 'cmyk.js', 'eps-export.js', 'merge-paths.js', 'preprocess.js', 'svg-compat.js', 'README.md'];
 for (const f of files) {
   if (fs.existsSync(path.join(root, f))) {
     fs.copyFileSync(path.join(root, f), path.join(dist, f));

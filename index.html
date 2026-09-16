@@ -731,6 +731,68 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </div>
       </div>
 
+      <div class="card collapsible" id="foldPre">
+        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldPreBody">
+          <h3>图像预处理</h3>
+          <span class="card-sum" id="sumPre"></span>
+          <span class="caret">›</span>
+        </button>
+        <div class="card-body" id="foldPreBody">
+          <div class="row">
+            <label for="preSize">转换尺寸上限
+              <span class="tip" tabindex="0" aria-label="转换尺寸说明">
+                ?
+                <span class="tip-pop" role="tooltip">矢量化后的色块数随像素数增长，超出实际印刷需要的尺寸只是浪费。吊牌按 300dpi 计算时，1200–1600px 通常已足够。</span>
+              </span>
+            </label>
+            <select id="preSize">
+              <option value="0">不限</option>
+              <option value="2400">2400 px</option>
+              <option value="1600" selected>1600 px</option>
+              <option value="1200">1200 px</option>
+              <option value="800">800 px</option>
+            </select>
+          </div>
+          <label class="row" style="cursor:pointer">
+            <input type="checkbox" id="preDenoise" checked>
+            <span style="flex:1;font-weight:600">中值去噪<span class="hint">　清除孤立噪点</span></span>
+          </label>
+          <div class="row">
+            <label for="preSmooth">保边平滑
+              <span class="tip" tabindex="0" aria-label="保边平滑说明">
+                ?
+                <span class="tip-pop" role="tooltip">双边滤波：抹平渐变过渡与纹理，但保留轮廓边界。强度过高会让细小的真实细节一起消失。</span>
+              </span>
+            </label>
+            <input type="range" id="preSmooth" min="0" max="3" value="1">
+            <output id="preSmoothV">1</output>
+          </div>
+          <div class="row" style="margin-bottom:0">
+            <label for="preColors">颜色数上限
+              <span class="tip anchor-right" tabindex="0" aria-label="颜色数说明">
+                ?
+                <span class="tip-pop" role="tooltip">中值切割量化：把位图颜色压到指定上限。这是减少色块最有效的一项——印刷吊牌通常 4–12 色即可。「不限」则不改动颜色。</span>
+              </span>
+            </label>
+            <select id="preColors">
+              <option value="0">不限</option>
+              <option value="4">4 色</option>
+              <option value="6">6 色</option>
+              <option value="8">8 色</option>
+              <option value="12">12 色</option>
+              <option value="16" selected>16 色</option>
+              <option value="24">24 色</option>
+              <option value="32">32 色</option>
+            </select>
+          </div>
+          <div class="hint hidden" id="preStatus" style="margin-top:12px"></div>
+          <div class="hint" style="margin-top:10px">
+            实测：多色彩照片型素材「16 色 + 去噪」配合下方的同色路径合并，
+            可将图形对象数减少约 60–80%；矢量风格素材（大色块、渐变少）建议把颜色数改为「不限」，否则色带会替代原有的平滑过渡
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="row" style="margin:0">
           <label for="svgoOn" style="cursor:pointer;font-weight:600;color:var(--text)">输出时用 SVGO 优化路径</label>

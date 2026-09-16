@@ -5,11 +5,13 @@ import { toLegacySvg } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
 import { mergeSameColorPaths } from './merge-paths.js';
+import { preprocess, countColors } from './preprocess.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-const MAX_SIDE = 1600;
+/* 上传时的解码上限：留出足够余量供「转换尺寸上限」做降采样 */
+const MAX_SIDE = 2400;
 
 /* ============================ 引擎（懒加载） ============================
  * 说明：曾尝试把引擎放进 Web Worker，但实测 module worker 内的模块加载
@@ -439,6 +441,59 @@ function wireDevPanel() {
   setOpen(false);
 }
 
+/* ============================ 图像预处理设置 ============================ */
+
+const PRE_UI = {
+  size: '#preSize', denoise: '#preDenoise', smooth: '#preSmooth',
+  smoothV: '#preSmoothV', colors: '#preColors', status: '#preStatus', sum: '#sumPre'
+};
+
+function collectPreOptions() {
+  const size = parseInt($(PRE_UI.size).value, 10) || 0;
+  const colors = parseInt($(PRE_UI.colors).value, 10) || 0;
+  const denoise = $(PRE_UI.denoise).checked;
+  const smooth = parseInt($(PRE_UI.smooth).value, 10) || 0;
+  return {
+    maxSide: size, denoise, smooth, maxColors: colors,
+    active: !!size || denoise || !!smooth || colors >= 2
+  };
+}
+
+/** 摘要文字：折叠状态下也能看到当前设置 */
+function updatePreSummary() {
+  const o = collectPreOptions();
+  const parts = [o.maxSide ? o.maxSide + 'px' : '原始尺寸'];
+  if (o.denoise) parts.push('去噪');
+  if (o.smooth) parts.push('平滑' + o.smooth);
+  parts.push(o.maxColors >= 2 ? o.maxColors + ' 色' : '不限色');
+  $(PRE_UI.sum).textContent = parts.join(' · ');
+}
+
+function showPreStatus(stats) {
+  const el = $(PRE_UI.status);
+  if (!el || !stats) return;
+  const lines = [];
+  const cut = stats.colorsBefore - stats.colorsAfter;
+  lines.push(`输出 ${stats.width}×${stats.height} · 颜色 <b>${stats.colorsBefore} → ${stats.colorsAfter}</b>`
+    + (cut > 0 ? `（减少 ${cut}）` : '') + ` · 耗时 ${Math.round(stats.ms)}ms`);
+  if (stats.steps.length) lines.push(stats.steps.map(s => escapeHtml(s)).join(' → '));
+  el.innerHTML = lines.map((s, i) => `<div${i ? ' style="margin-top:3px"' : ''}>${s}</div>`).join('');
+  el.classList.remove('hidden');
+}
+
+$(PRE_UI.smooth).addEventListener('input', e => {
+  $(PRE_UI.smoothV).textContent = e.target.value;
+  updatePreSummary();
+  S1.lastKey = '';
+});
+[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise].forEach(sel => {
+  $(sel).addEventListener('change', () => {
+    updatePreSummary();
+    S1.lastKey = '';              // 预处理设置变化必须重新转换
+  });
+});
+updatePreSummary();
+
 /* ============================ 可折叠卡片 ============================
  * 用内联样式直接驱动（而非依赖 class 规则）：实测在部分环境下
  * `.collapsible.open .card-body` 虽然 matches() 为 true，但样式不会被应用，
@@ -511,6 +566,7 @@ const PRESETS = {
 const SCHEMA = {
   vtracer: [
     { key: 'filterSpeckle', label: '去噪（忽略小色块）', min: 0, max: 32, step: 1, def: 4 },
+    { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 16 },
     { key: 'maxColors', label: '最大色数（0 为不限）', min: 0, max: 64, step: 1, def: 0 },
     { key: 'cornerThreshold', label: '拐角阈值', min: 0, max: 180, step: 1, def: 60 },
     { key: 'lengthThreshold', label: '细节保留度', min: 0, max: 20, step: 1, def: 4 }
@@ -734,7 +790,11 @@ async function runVectorize(force) {
     const options = collectOptions();
     const wantSvgo = $('#svgoOn').checked;
     const exportMode = $('#exportMode').value;
-    const key = JSON.stringify({ e: S1.engine, o: options, s: wantSvgo, m: exportMode, w: S1.w, h: S1.h, f: S1.file && S1.file.name });
+    const preOpts = collectPreOptions();
+    const key = JSON.stringify({
+      e: S1.engine, o: options, s: wantSvgo, m: exportMode,
+      p: preOpts, w: S1.w, h: S1.h, f: S1.file && S1.file.name
+    });
 
     if (!force && key === S1.lastKey && S1.svg) {
       restore();
@@ -743,11 +803,29 @@ async function runVectorize(force) {
       return;
     }
 
-    prog.stage(20, '加载引擎');
+    /* 图像预处理：降采样 → 去噪 → 保边平滑 → 颜色量化，
+       直接减少送入引擎的颜色种类，从源头抑制色块数量 */
+    prog.stage(14, '图像预处理');
+    let pw = S1.w, ph = S1.h, rgba;
+    if (preOpts.active) {
+      await yieldFrame();
+      const pre = preprocess(S1.imageData, {
+        ...preOpts,
+        onProgress: (p, label) => prog.stage(10 + Math.round(p * 0.14), label)
+      });
+      showPreStatus(pre.stats);
+      pw = pre.stats.width;
+      ph = pre.stats.height;
+      rgba = new Uint8Array(pre.imageData.data);
+    } else {
+      $(PRE_UI.status).classList.add('hidden');
+      rgba = new Uint8Array(S1.imageData.data);
+    }
+
+    prog.stage(26, '加载引擎');
     const t0 = performance.now();
-    const rgba = new Uint8Array(S1.imageData.data);
-    prog.stage(34, '图像分析');
-    let svgText = await vectorize({ engine: S1.engine, rgba, w: S1.w, h: S1.h, options });
+    prog.stage(36, '图像分析');
+    let svgText = await vectorize({ engine: S1.engine, rgba, w: pw, h: ph, options });
     prog.stage(80, '矢量化');
     let svgoMs = 0;
 
@@ -787,7 +865,7 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
-    svgText = ensureSvgSize(svgText, S1.w, S1.h);
+    svgText = ensureSvgSize(svgText, pw, ph);
     if (exportMode === 'legacy') {
       svgText = toLegacySvg(svgText);
     }
@@ -1726,6 +1804,7 @@ $('#demo4').addEventListener('click', async () => {
 wireDevPanel();
 wireFold('foldEngine');
 wireFold('foldParams');
+wireFold('foldPre');
 renderPresets();
 renderParams();
 
