@@ -1012,6 +1012,8 @@ const POST_UI = {
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+const EDGE_LABELS = ['关闭', '轻度', '标准', '强化'];
+
 /** 读取后处理设置 */
 function collectPostOptions(i) {
   const ui = POST_UI[i];
@@ -1030,7 +1032,7 @@ function updatePostSummary(i) {
   const parts = [];
   parts.push(o.enabled ? '合并' : '不合并');
   if (o.minArea) parts.push('碎块<' + o.minArea + 'px²');
-  parts.push(o.edgeSmooth ? '平滑' + o.edgeSmooth : '不平滑');
+  parts.push(o.edgeSmooth ? '平滑·' + (EDGE_LABELS[o.edgeSmooth] || o.edgeSmooth) : '不平滑');
   const el = $(ui.sum);
   if (el) el.textContent = parts.join(' · ');
   // 后处理设置变化必须重新转换（S1 在模块稍后定义，初始化阶段忽略）
@@ -1063,7 +1065,7 @@ function updatePostSummary(i) {
 
   const sm = $(ui.smooth);
   const syncSmooth = () => {
-    $(ui.smoothV).textContent = sm.value;
+    $(ui.smoothV).textContent = EDGE_LABELS[parseInt(sm.value, 10)] || sm.value;
     updatePostSummary(i);
   };
   sm.addEventListener('input', syncSmooth);

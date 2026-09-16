@@ -1012,11 +1012,118 @@ function roundShallowCorners(p, level) {
   return changed;
 }
 
+/** 三次贝塞尔在参数 t 处的点 */
+function cubicAt(p0, p1, p2, p3, t) {
+  const mt = 1 - t;
+  const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y
+  };
+}
+
+/** 闭合点列的 D-P：用 K 个等分锚点切成小段，段内简化（返回保留标记） */
+function dpKeepRingPoints(pts, tol) {
+  const n = pts.length;
+  const K = Math.max(3, Math.min(24, Math.round(n / 8) || 3));
+  const anchors = [];
+  for (let k = 0; k < K; k++) anchors.push(Math.round(k * n / K) % n);
+  anchors[0] = 0;
+
+  const keep = new Uint8Array(n);
+  for (const ai of anchors) keep[ai] = 1;
+
+  for (let k = 0; k < anchors.length; k++) {
+    const from = anchors[k];
+    const to = anchors[(k + 1) % anchors.length];
+    const idx = [];
+    let i = from;
+    let guard = 0;
+    while (guard++ <= n) {
+      idx.push(i);
+      if (i === to) break;
+      i = (i + 1) % n;
+    }
+    if (idx.length > 2) {
+      const kk = dpKeep(idx.map(x => pts[x]), tol);
+      idx.forEach((oi, j) => { if (kk[j]) keep[oi] = 1; });
+    }
+  }
+  return keep;
+}
+
+/**
+ * 把「近乎直线」的曲线段转为直线。
+ * 很多曲线的控制点几乎落在起终点连线上（描摹抗锯齿边缘的产物），
+ * 转直后既能被 D-P 简化，EPS 里也从 curveto 变成 lineto（更省）。
+ */
+function flattenNearStraightCurves(p, tol) {
+  const segs = p.segments;
+  const n = segs.length;
+  if (n < 3) return 0;
+  let changed = 0;
+  for (let i = 0; i < n; i++) {
+    const a = segs[i];
+    const b = segs[(i + 1) % n];
+    if (a.handleOut.isZero() && b.handleIn.isZero()) continue;   // 本来就是直线
+    const c1 = a.point.add(a.handleOut);
+    const c2 = b.point.add(b.handleIn);
+    const dev = Math.max(
+      segDist({ x: c1.x, y: c1.y }, a.point, b.point),
+      segDist({ x: c2.x, y: c2.y }, a.point, b.point)
+    );
+    if (dev <= tol) {
+      a.handleOut.set(0, 0);
+      b.handleIn.set(0, 0);
+      changed++;
+    }
+  }
+  return changed;
+}
+
+/**
+ * 曲线路径的简化：沿路径重采样 → D-P → 重建。
+ * 这是让「曲线路径」也真正减少节点的关键——原先只对纯折线区间做 D-P，
+ * 而描摹输出的曲线路径不含折线区间，导致简化完全不起作用。
+ * 形状偏差由容差控制；档位 ≥2 时重建后再做浅转角曲线化，避免变成多边形。
+ */
+function resampleSimplify(p, tol, smoothLevel) {
+  const segs = p.segments;
+  const n = segs.length;
+  if (n < 4) return 0;
+
+  const SPD = 5;                       // 每段采样点数
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = segs[i];
+    const b = segs[(i + 1) % n];
+    const p0 = { x: a.point.x, y: a.point.y };
+    const p1 = { x: a.point.x + a.handleOut.x, y: a.point.y + a.handleOut.y };
+    const p2 = { x: b.point.x + b.handleIn.x, y: b.point.y + b.handleIn.y };
+    const p3 = { x: b.point.x, y: b.point.y };
+    for (let k = 0; k < SPD; k++) pts.push(cubicAt(p0, p1, p2, p3, k / SPD));
+  }
+  if (pts.length < 6) return 0;
+
+  const keep = dpKeepRingPoints(pts, tol);
+  const kept = [];
+  for (let i = 0; i < pts.length; i++) if (keep[i]) kept.push(pts[i]);
+  if (kept.length < 3 || kept.length >= n) return 0;   // 无收益就不动
+
+  const Point = p.segments[0].point.constructor;
+  p.removeSegments();
+  for (const q of kept) p.add(new Point(q.x, q.y));
+  p.closed = true;
+
+  if (smoothLevel >= 2) roundShallowCorners(p, smoothLevel);
+  return n - kept.length;
+}
+
 /**
  * 锚点精简与边缘平滑：
  *   - 全直线子路径 → 整环 Douglas-Peucker（偏差 ≤ tol）
- *   - 含曲线子路径 → 仅对其中「纯折线区间」做 D-P（曲线段原样保留）
- *   - smoothLevel ≥ 2 → 再对浅转角做轻度曲线化（硬边受转角阈值保护）
+ *   - 含曲线子路径 → 近直线曲线段转直 + 折线区间 D-P；
+ *     平滑档位 ≥ 2 时改为「重采样 + D-P + 浅转角曲线化」（对曲线路径真正生效）
  * @returns {number} 移除／改动的锚点总数
  */
 function pruneAnchors(item, tol, smoothLevel = 0) {
@@ -1039,41 +1146,17 @@ function pruneAnchors(item, tol, smoothLevel = 0) {
          弦会横跨形状内部，环上所有点都被判为偏离过大，简化完全不生效。 */
       const pts = segs.map(s => ({ x: s.point.x, y: s.point.y }));
       const n = pts.length;
-      const K = Math.max(3, Math.min(16, Math.round(n / 8) || 3));
-      const anchors = [];
-      for (let k = 0; k < K; k++) anchors.push(Math.round(k * n / K) % n);
-      anchors[0] = 0;
-
-      const keep = new Uint8Array(n);
-      for (const ai of anchors) keep[ai] = 1;
-
-      for (let k = 0; k < anchors.length; k++) {
-        const from = anchors[k];
-        const to = anchors[(k + 1) % anchors.length];
-        const idx = [];
-        let i = from;
-        let guard = 0;
-        while (guard++ <= n) {
-          idx.push(i);
-          if (i === to) break;
-          i = (i + 1) % n;
-        }
-        if (idx.length > 2) {
-          const kk = dpKeep(idx.map(x => pts[x]), tol);
-          idx.forEach((oi, j) => { if (kk[j]) keep[oi] = 1; });
-        }
-      }
-
+      const keep = dpKeepRingPoints(pts, tol);
       for (let i = n - 1; i >= 0; i--) {
         if (!keep[i]) { p.removeSegment(i); count++; }
       }
+    } else if (smoothLevel >= 2) {
+      // 曲线路径：重采样简化（真正减少节点）
+      count += resampleSimplify(p, tol, smoothLevel);
     } else {
-      // 含曲线：只对纯折线区间做 D-P，曲线段不动
+      // 曲线路径（保守档）：先把近直线曲线段转直，再对折线区间做 D-P
+      count += flattenNearStraightCurves(p, tol);
       count += dpSimplifyStraightRuns(p, tol);
-    }
-
-    if (smoothLevel >= 2) {
-      count += roundShallowCorners(p, smoothLevel);
     }
   }
   return count;
