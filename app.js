@@ -4,6 +4,7 @@
 import { toLegacySvg } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
+import { mergeSameColorPaths } from './merge-paths.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -766,6 +767,25 @@ async function runVectorize(force) {
       }
     }
 
+    /* 同色闭合路径合并（几何布尔并集）：放在 SVGO 之后，
+       对已压缩精度的路径做几何合并，输出的对象数即最终对象数 */
+    if ($('#mergeOn').checked) {
+      prog.stage(92, '同色路径合并');
+      try {
+        const mr = await mergeSameColorPaths(svgText, {
+          tolerance: +$('#mergeTol').value / 100,
+          onProgress: (p, label) => prog.stage(90 + Math.round(p * 0.04), label)
+        });
+        svgText = mr.svg;
+        showMergeStatus(1, mr.stats, mr.warnings);
+      } catch (e) {
+        console.warn('同色合并失败，使用原 SVG', e);
+        showMergeStatus(1, null, ['同色合并失败：' + (e.message || e)]);
+      }
+    } else {
+      hideMergeStatus(1);
+    }
+
     prog.stage(96, '整理输出');
     svgText = ensureSvgSize(svgText, S1.w, S1.h);
     if (exportMode === 'legacy') {
@@ -855,6 +875,68 @@ $('#viewToggle1').addEventListener('click', () => {
 $('#dl1').addEventListener('click', () => {
   if (S1.outBlob) download(S1.outBlob, S1.outName || 'vector.svg');
 });
+
+/* ---------- 同色路径合并（几何布尔并集） ---------- */
+
+const MERGE_UI = {
+  1: { on: '#mergeOn', tol: '#mergeTol', tolV: '#mergeTolV', row: '#mergeTolRow', status: '#mergeStatus' },
+  3: { on: '#mergeOn3', tol: '#mergeTol3', tolV: '#mergeTolV3', row: '#mergeTolRow3', status: '#mergeStatus3' }
+};
+
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+[1, 3].forEach(i => {
+  const ui = MERGE_UI[i];
+  const on = $(ui.on), tol = $(ui.tol), tolV = $(ui.tolV), row = $(ui.row);
+  if (!on || !tol) return;
+  const sync = () => {
+    tolV.textContent = (tol.value / 100).toFixed(2);
+    row.style.opacity = on.checked ? '1' : '.5';
+    row.style.pointerEvents = on.checked ? '' : 'none';
+  };
+  tol.addEventListener('input', sync);
+  on.addEventListener('change', () => {
+    sync();
+    if (!on.checked) hideMergeStatus(i);
+  });
+  sync();
+});
+
+function hideMergeStatus(i) {
+  const el = $(MERGE_UI[i].status);
+  if (el) { el.classList.add('hidden'); el.textContent = ''; }
+}
+
+/**
+ * 展示同色合并结果与颜色检测告警
+ * @param {number} i 1=位图转矢量 3=优化压缩
+ */
+function showMergeStatus(i, stats, warnings) {
+  const el = $(MERGE_UI[i].status);
+  if (!el) return;
+  if (!stats && (!warnings || !warnings.length)) { hideMergeStatus(i); return; }
+
+  const lines = [];
+  if (stats) {
+    const before = stats.beforeShapes;
+    const after = stats.afterShapes;
+    const cut = before - after;
+    const pct = before ? Math.round(cut / before * 100) : 0;
+    lines.push(`同色路径合并：图形 <b>${before} → ${after}</b> 个（减少 ${cut}，${pct}%）`
+      + ` · 合并 ${stats.mergeGroups} 组 · 简化锚点 ${stats.anchorsPruned || 0}`);
+    const shown = stats.colors.slice(0, 8).map(escapeHtml).join(' ');
+    lines.push(`检测到 <b>${stats.colorCount}</b> 种颜色：${shown}`
+      + (stats.colorCount > 8 ? ` 等 ${stats.colorCount} 种` : '')
+      + `　（印刷交稿建议转 CMYK，可用「下载 EPS」）`);
+  }
+  if (warnings && warnings.length) {
+    lines.push('⚠ ' + warnings.map(escapeHtml).join('；'));
+  }
+  el.innerHTML = lines.map((s, idx) =>
+    `<div${idx ? ' style="margin-top:3px"' : ''}>${s}</div>`).join('');
+  el.classList.remove('hidden');
+}
 
 /* ---------- CMYK EPS 导出 ---------- */
 
@@ -1252,6 +1334,27 @@ $('#run3').addEventListener('click', async () => {
 
     prog.stage(18, '解析结构');
     let out = S3.src;
+
+    /* 同色合并作为预处理：先做几何级合并与锚点精简，再交给 SVGO 压缩 */
+    if ($('#mergeOn3').checked) {
+      prog.stage(30, '同色路径合并');
+      try {
+        const mr = await mergeSameColorPaths(out, {
+          tolerance: +$('#mergeTol3').value / 100,
+          onProgress: (p, label) => prog.stage(28 + Math.round(p * 0.22), label)
+        });
+        out = mr.svg;
+        S3.mergeStats = mr.stats;
+        showMergeStatus(3, mr.stats, mr.warnings);
+      } catch (e) {
+        console.warn('同色合并失败，使用原 SVG', e);
+        S3.mergeStats = null;
+        showMergeStatus(3, null, ['同色合并失败：' + (e.message || e)]);
+      }
+    } else {
+      S3.mergeStats = null;
+      hideMergeStatus(3);
+    }
 
     if (useSvgo) {
       prog.stage(60, 'SVGO 优化');

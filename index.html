@@ -754,6 +754,22 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         </div>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
           <div class="row" style="margin:0">
+            <label for="mergeOn" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
+              ?
+              <span class="tip-pop" role="tooltip">把填充色相同的闭合路径做<b>几何布尔并集</b>合并为单一路径，重叠区域真正合并（不同于 SVGO 的字符串拼接）。可大幅减少 CorelDRAW 等软件的对象数量与卡顿。开放线条、描边轮廓、渐变／图案填充、遮罩内对象、位图均不参与。</span>
+            </span>
+            <input type="checkbox" id="mergeOn" checked>
+          </div>
+          <div class="row" id="mergeTolRow" style="margin-top:12px;margin-bottom:0">
+            <label for="mergeTol">锚点简化容差 <span class="hint">px</span></label>
+            <input type="range" id="mergeTol" min="1" max="20" value="5">
+            <output id="mergeTolV">0.05</output>
+          </div>
+          <div class="hint hidden" id="mergeStatus" style="margin-top:8px"></div>
+        </div>
+        <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
+          <div class="row" style="margin:0">
             <label for="epsTransparent" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
             <span class="tip anchor-right" tabindex="0" aria-label="CMYK EPS 说明">
               ?
@@ -1072,6 +1088,22 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <input type="checkbox" id="optGzip">
           <span style="flex:1;font-weight:600">同时输出 SVGZ（gzip）</span>
         </label>
+        <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
+          <div class="row" style="margin:0">
+            <label for="mergeOn3" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
+              ?
+              <span class="tip-pop" role="tooltip">把填充色相同的闭合路径做<b>几何布尔并集</b>合并为单一路径，几何级合并（非 SVGO 的字符串拼接）。可大幅减少 CorelDRAW 等软件的对象数量与卡顿。开放线条、描边轮廓、渐变／图案填充、遮罩内对象、位图均不参与。</span>
+            </span>
+            <input type="checkbox" id="mergeOn3" checked>
+          </div>
+          <div class="row" id="mergeTolRow3" style="margin-top:12px;margin-bottom:0">
+            <label for="mergeTol3">锚点简化容差 <span class="hint">px</span></label>
+            <input type="range" id="mergeTol3" min="1" max="20" value="5">
+            <output id="mergeTolV3">0.05</output>
+          </div>
+          <div class="hint hidden" id="mergeStatus3" style="margin-top:8px"></div>
+        </div>
         <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
           <div class="row" style="margin:0">
             <label for="epsTransparent3" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
