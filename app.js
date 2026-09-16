@@ -386,14 +386,18 @@ const PROG = {
 
 /* ============================ Tab 切换 ============================ */
 
+/* 标签栏在四个页面各有一份副本（位于结果区上方），
+   切换时按 data-tab 同步所有副本的高亮状态 */
 $$('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
+    const target = tab.dataset.tab;
     $$('.tab').forEach(t => {
-      const on = t === tab;
+      const on = t.dataset.tab === target;
       t.classList.toggle('active', on);
       t.setAttribute('aria-selected', on ? 'true' : 'false');
     });
-    $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab.dataset.tab));
+    $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + target));
+    try { S1.lastKey = ''; } catch (e) { /* 尚未初始化 */ }
   });
 });
 
@@ -441,7 +445,37 @@ function wireDevPanel() {
   setOpen(false);
 }
 
-/* ============================ 图像预处理设置 ============================ */
+/* ---------- 输出相关折叠卡片的摘要 ---------- */
+
+function updateOutputSummaries() {
+  const svgoOn = $('#svgoOn');
+  if (svgoOn) {
+    const legacy = $('#exportMode').value === 'legacy';
+    $('#sumSvgo').textContent = (svgoOn.checked ? 'SVGO 开' : 'SVGO 关')
+      + ' · ' + (legacy ? '老软件兼容' : '标准 SVG');
+  }
+  const eps1 = $('#epsTransparent');
+  if (eps1) $('#sumEps').textContent = eps1.checked ? '透明底' : '白底';
+  const eps3 = $('#epsTransparent3');
+  if (eps3) $('#sumEps3').textContent = eps3.checked ? '透明底' : '白底';
+  const optSvgo = $('#optSvgo');
+  if (optSvgo) {
+    const prec = $('#optPrec');
+    $('#sumOpt').textContent = (optSvgo.checked ? 'SVGO 开' : '本地优化')
+      + ' · 精度 ' + (prec ? prec.value : '2');
+  }
+}
+
+['#svgoOn', '#exportMode', '#epsTransparent', '#epsTransparent3', '#optSvgo', '#optPrec']
+  .forEach(sel => {
+    const el = $(sel);
+    if (el) el.addEventListener('change', updateOutputSummaries);
+  });
+const precEl = $('#optPrec');
+if (precEl) precEl.addEventListener('input', updateOutputSummaries);
+updateOutputSummaries();
+
+/* ---------- 图像预处理设置 ============================ */
 
 const PRE_UI = {
   size: '#preSize', denoise: '#preDenoise', smooth: '#preSmooth',
@@ -1872,6 +1906,10 @@ wireFold('foldParams');
 wireFold('foldPre');
 wireFold('foldPost');
 wireFold('foldPost3');
+wireFold('foldSvgo');
+wireFold('foldEps');
+wireFold('foldEps3');
+wireFold('foldOpt');
 renderPresets();
 renderParams();
 
