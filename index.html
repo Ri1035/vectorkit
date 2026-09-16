@@ -198,6 +198,14 @@ button{font:inherit;color:inherit}
 .tab svg{flex:none;opacity:.9}
 /* 标签栏位于结果区上方时，与下方按钮的间距由列布局统一控制 */
 .col > .tabs{margin-bottom:0}
+/* 「设置」大卡片：顶部切换 + 内容面板 */
+.set-tabs{display:flex;gap:4px;background:var(--surface-2);border-radius:12px;padding:4px;margin-bottom:14px}
+.set-tab{flex:1;padding:8px 2px;font-size:12px;font-weight:600;color:var(--text-2);background:transparent;border:0;border-radius:9px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.set-tab:hover{color:var(--text)}
+.set-tab.on{background:var(--surface);color:var(--c-violet-d);box-shadow:var(--clay-pressed)}
+.set-pane{display:none}
+.set-pane.on{display:block;animation:paneIn .18s ease}
+@keyframes paneIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 
 @media (max-width:767px){
   .tabs{
@@ -687,56 +695,35 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         <div id="file1"></div>
       </div>
 
-      <div class="card collapsible" id="foldEngine">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldEngineBody">
-          <h3>引擎与预设</h3>
-          <span class="card-sum" id="sumEngine">VTracer · Logo 图标</span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldEngineBody">
+      <div class="card" id="settingsCard">
+        <div class="set-tabs" id="setTabs">
+          <button class="set-tab on" data-set="tpl" type="button">模板</button>
+          <button class="set-tab" data-set="engine" type="button">引擎</button>
+          <button class="set-tab" data-set="params" type="button">参数</button>
+          <button class="set-tab" data-set="pre" type="button">预处理</button>
+          <button class="set-tab" data-set="post" type="button">后处理</button>
+          <button class="set-tab" data-set="out" type="button">输出</button>
+        </div>
+        <div class="set-pane on" data-pane="tpl">
+          <div class="hint" style="margin-bottom:10px">点击即套用整套配置（覆盖引擎参数、预处理与后处理设置）</div>
+          <div class="presets" id="templates"></div>
+          <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>
+        </div>
+        <div class="set-pane" data-pane="engine">
           <div class="seg" id="engineSeg" style="margin-bottom:14px">
             <button data-engine="vtracer" class="on" type="button">VTracer · 彩色</button>
             <button data-engine="potrace" type="button">Potrace · 黑白</button>
           </div>
           <div class="presets" id="presets"></div>
         </div>
-      </div>
 
-      <div class="card collapsible" id="foldParams">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldParamsBody">
-          <h3>参数</h3>
-          <span class="card-sum" id="sumParams"></span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldParamsBody">
+        <div class="set-pane" data-pane="params">
           <div id="params"></div>
           <button class="toggle" id="advToggle" type="button" style="margin-top:15px"><span class="caret">›</span>高级参数</button>
           <div class="adv" id="advBox"></div>
         </div>
-      </div>
 
-      <div class="card collapsible" id="foldTpl">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldTplBody">
-          <h3>参数模板</h3>
-          <span class="card-sum" id="sumTpl">点击套用整套配置</span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldTplBody">
-          <div class="hint" style="margin-bottom:10px">
-            点击即套用整套配置（覆盖引擎参数、预处理与后处理设置）
-          </div>
-          <div class="presets" id="templates"></div>
-          <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>
-        </div>
-      </div>
-
-      <div class="card collapsible" id="foldPre">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldPreBody">
-          <h3>图像预处理</h3>
-          <span class="card-sum" id="sumPre"></span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldPreBody">
+      <div class="set-pane" data-pane="pre">
           <div class="row">
             <label for="preSize">转换尺寸上限
               <span class="tip" tabindex="0" aria-label="转换尺寸说明">
@@ -790,16 +777,9 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             24 色以下开始出现肉眼可见的色带，4–8 色适合专色印刷或扁平化风格。
             若素材不含平滑渐变（大色块、线稿），建议选「不限」。
           </div>
-        </div>
       </div>
 
-      <div class="card collapsible" id="foldPost">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldPostBody">
-          <h3>矢量后处理</h3>
-          <span class="card-sum" id="sumPost"></span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldPostBody">
+      <div class="set-pane" data-pane="post">
           <div class="row" style="margin:0">
             <label for="mergeOn" style="cursor:pointer;font-weight:600;color:var(--text)">同色路径合并</label>
             <span class="tip anchor-right" tabindex="0" aria-label="同色路径合并说明">
@@ -842,16 +822,9 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <div class="hint" style="margin-top:10px">
             后处理在本地完成，决定最终交稿文件里的图形对象数
           </div>
-        </div>
       </div>
 
-      <div class="card collapsible" id="foldOut">
-        <button class="card-head" type="button" aria-expanded="false" aria-controls="foldOutBody">
-          <h3>输出设置</h3>
-          <span class="card-sum" id="sumOut"></span>
-          <span class="caret">›</span>
-        </button>
-        <div class="card-body" id="foldOutBody">
+      <div class="set-pane" data-pane="out">
           <div class="row" style="margin:0">
             <label for="svgoOn" style="cursor:pointer;font-weight:600;color:var(--text)">SVGO 优化路径</label>
             <span class="tip" tabindex="0" aria-label="SVGO 优化说明">

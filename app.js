@@ -452,7 +452,8 @@ function updateOutputSummaries() {
   const eps1 = $('#epsTransparent');
   if (svgoOn && eps1) {
     const legacy = $('#exportMode').value === 'legacy';
-    $('#sumOut').textContent = (svgoOn.checked ? 'SVGO 开' : 'SVGO 关')
+    const out = $('#sumOut');
+    if (out) out.textContent = (svgoOn.checked ? 'SVGO 开' : 'SVGO 关')
       + ' · ' + (legacy ? '老软件兼容' : '标准 SVG')
       + ' · ' + (eps1.checked ? '透明底' : '白底');
   }
@@ -500,7 +501,8 @@ function updatePreSummary() {
   if (o.denoise) parts.push('去噪');
   if (o.smooth) parts.push('平滑' + o.smooth);
   parts.push(o.maxColors >= 2 ? o.maxColors + ' 色' : '不限色');
-  $(PRE_UI.sum).textContent = parts.join(' · ');
+  const el = $(PRE_UI.sum);
+  if (el) el.textContent = parts.join(' · ');
 }
 
 function showPreStatus(stats) {
@@ -670,7 +672,6 @@ function renderPresets() {
     host.appendChild(b);
   });
   setFoldSummary(ENGINE_LABEL[S1.engine] + ' · ' + PRESETS[S1.engine][S1.preset].name);
-  syncFoldHeight('foldEngine');
 }
 
 function sliderRow(def, val, onChange) {
@@ -714,7 +715,6 @@ function renderParams() {
   });
 
   updateParamSummary();
-  syncFoldHeight('foldParams');
 }
 
 /** 折叠状态下，在「参数」标题右侧显示前两项参数值 */
@@ -987,7 +987,7 @@ $('#engineSeg').addEventListener('click', e => {
 
 /* ============================ 参数模板 ============================
  * 整套参数组合（引擎参数 + 预处理 + 后处理），一键套用。
- * 放在「高级参数」区域内，点击会覆盖当前所有相关设置。
+ * 放在「设置」大卡片的「模板」页，点击会覆盖当前所有相关设置。
  */
 
 const TEMPLATES = [
@@ -2043,16 +2043,23 @@ $('#demo4').addEventListener('click', async () => {
 /* ============================ 启动 ============================ */
 
 wireDevPanel();
-/* 左列设置卡片手风琴：同时只展开一个，页面长度恒定 */
-wireFold('foldEngine', false, 'settings');
-wireFold('foldParams', false, 'settings');
-wireFold('foldTpl', true, 'settings');
-wireFold('foldPre', false, 'settings');
-wireFold('foldPost', false, 'settings');
-wireFold('foldOut', false, 'settings');
+/* 位图页：设置大卡片（tab 切换） */
+wireSetTabs();
+/* 优化页：折叠卡片手风琴 */
 wireFold('foldPost3', false, 'settings3');
 wireFold('foldOpt', true, 'settings3');
 wireFold('foldEps3', false, 'settings3');
+
+/* 「设置」大卡片：顶部切换按钮 */
+function wireSetTabs() {
+  $$('#setTabs .set-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.set;
+      $$('#setTabs .set-tab').forEach(t => t.classList.toggle('on', t === tab));
+      $$('#settingsCard .set-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === target));
+    });
+  });
+}
 renderPresets();
 renderParams();
 renderTemplates();
