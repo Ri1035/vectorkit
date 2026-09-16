@@ -969,10 +969,135 @@ $('#engineSeg').addEventListener('click', e => {
   renderParams();
 });
 
+/* ============================ 参数模板 ============================
+ * 整套参数组合（引擎参数 + 预处理 + 后处理），一键套用。
+ * 放在「高级参数」区域内，点击会覆盖当前所有相关设置。
+ */
+
+const TEMPLATES = [
+  {
+    id: 'daily', name: '我的常用', desc: '常规吊牌 · 保留细节',
+    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
+    post: { merge: true, tol: 50, frag: true, fragTol: 6, edge: 1 }
+  },
+  {
+    id: 'lean', name: '节点精简', desc: 'EPS 线条更顺 · 节点减约 2/3',
+    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 8 },
+    pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
+    post: { merge: true, tol: 150, frag: true, fragTol: 6, edge: 3 }
+  },
+  {
+    id: 'tiny', name: '极小文件', desc: 'CDR 打开最快 · 接受少量简化',
+    params: { filterSpeckle: 16, layerDifference: 20, maxColors: 0, cornerThreshold: 60, lengthThreshold: 16 },
+    pre: { size: 1200, denoise: true, smooth: 1, colors: 48 },
+    post: { merge: true, tol: 200, frag: true, fragTol: 10, edge: 3 }
+  },
+  {
+    id: 'faithful', name: '高保真', desc: '细节优先 · 形状还原',
+    params: { filterSpeckle: 4, layerDifference: 12, maxColors: 0, cornerThreshold: 70, lengthThreshold: 2 },
+    pre: { size: 2400, denoise: false, smooth: 0, colors: 0 },
+    post: { merge: false, tol: 30, frag: false, fragTol: 4, edge: 1 }
+  },
+  {
+    id: 'photo', name: '多色照片', desc: '商品照片 · 减少色块',
+    params: { filterSpeckle: 14, layerDifference: 24, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
+    post: { merge: true, tol: 100, frag: true, fragTol: 8, edge: 2 }
+  },
+  {
+    id: 'line', name: '线稿印章', desc: '黑白线条 · 中心线平滑',
+    params: { filterSpeckle: 2, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    adv: { clustering: 'bw' },
+    pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
+    post: { merge: false, tol: 50, frag: true, fragTol: 4, edge: 1 }
+  }
+];
+
+function setCtlValue(sel, value, evt) {
+  const el = $(sel);
+  if (!el || value === undefined) return;
+  el.value = String(value);
+  el.dispatchEvent(new Event(evt));
+}
+
+function setCtlCheck(sel, on) {
+  const el = $(sel);
+  if (!el || on === undefined) return;
+  el.checked = !!on;
+  el.dispatchEvent(new Event('change'));
+}
+
+function applyTemplate(tpl) {
+  const isVtracer = S1.engine === 'vtracer';
+
+  if (isVtracer) {
+    const rows = $$('#params .row');
+    SCHEMA.vtracer.forEach((def, i) => {
+      if (!tpl.params || tpl.params[def.key] === undefined) return;
+      const input = $('input', rows[i]);
+      if (!input) return;
+      input.value = tpl.params[def.key];
+      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new Event('change'));
+    });
+    const advRows = $$('#advBox .row');
+    ADV.vtracer.forEach((def, i) => {
+      if (!tpl.adv || tpl.adv[def.key] === undefined) return;
+      const el = $('select', advRows[i]) || $('input', advRows[i]);
+      if (!el) return;
+      el.value = tpl.adv[def.key];
+      el.dispatchEvent(new Event('change'));
+    });
+  }
+
+  if (tpl.pre) {
+    setCtlValue('#preSize', tpl.pre.size, 'change');
+    setCtlCheck('#preDenoise', tpl.pre.denoise);
+    setCtlValue('#preSmooth', tpl.pre.smooth, 'input');
+    setCtlValue('#preColors', tpl.pre.colors, 'change');
+  }
+  if (tpl.post) {
+    setCtlCheck('#mergeOn', tpl.post.merge);
+    setCtlValue('#mergeTol', tpl.post.tol, 'input');
+    setCtlCheck('#fragOn', tpl.post.frag);
+    setCtlValue('#fragTol', tpl.post.fragTol, 'input');
+    setCtlValue('#smoothEdge', tpl.post.edge, 'input');
+  }
+
+  S1.lastKey = '';
+  $$('#templates .preset').forEach(b => b.classList.toggle('on', b.dataset.tpl === tpl.id));
+  const st = $('#tplStatus');
+  if (st) {
+    st.classList.remove('hidden');
+    st.innerHTML = '已套用模板：<b>' + escapeHtml(tpl.name) + '</b>'
+      + (isVtracer ? '' : '（当前引擎非 VTracer，仅套用了预处理与后处理设置）');
+  }
+}
+
+function renderTemplates() {
+  const host = $('#templates');
+  if (!host) return;
+  host.innerHTML = '';
+  TEMPLATES.forEach(tpl => {
+    const b = document.createElement('button');
+    b.className = 'preset';
+    b.type = 'button';
+    b.dataset.tpl = tpl.id;
+    b.innerHTML = '<span class="p1">' + escapeHtml(tpl.name) + '</span>'
+      + '<span class="p2">' + escapeHtml(tpl.desc) + '</span>';
+    b.addEventListener('click', () => applyTemplate(tpl));
+    host.appendChild(b);
+  });
+}
+
 $('#advToggle').addEventListener('click', () => {
   const t = $('#advToggle');
-  t.classList.toggle('open');
-  $('#advBox').classList.toggle('open');
+  const on = !t.classList.contains('open');
+  t.classList.toggle('open', on);
+  $('#advBox').classList.toggle('open', on);
+  const tpl = $('#tplBox');
+  if (tpl) tpl.classList.toggle('open', on);
 });
 
 $('#run1').addEventListener('click', () => runVectorize(false));
@@ -1914,6 +2039,7 @@ wireFold('foldEps3');
 wireFold('foldOpt');
 renderPresets();
 renderParams();
+renderTemplates();
 
 function scheduleWarmup() {
   setTimeout(() => { warmup(); }, 180);

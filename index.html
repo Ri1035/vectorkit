@@ -711,6 +711,13 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <div id="params"></div>
           <button class="toggle" id="advToggle" type="button" style="margin-top:15px"><span class="caret">›</span>高级参数</button>
           <div class="adv" id="advBox"></div>
+          <div class="adv" id="tplBox">
+            <div class="hint" style="margin-bottom:10px">
+              参数模板 · 点击套用整套配置（将覆盖引擎参数、预处理与后处理设置）
+            </div>
+            <div class="presets" id="templates"></div>
+            <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>
+          </div>
         </div>
       </div>
 
@@ -794,8 +801,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           </div>
           <div class="row" id="mergeTolRow" style="margin-top:12px;margin-bottom:0">
             <label for="mergeTol">锚点简化容差 <span class="hint">px</span></label>
-            <input type="range" id="mergeTol" min="1" max="200" value="150">
-            <output id="mergeTolV">1.50</output>
+            <input type="range" id="mergeTol" min="1" max="200" value="50">
+            <output id="mergeTolV">0.50</output>
           </div>
 
           <div class="row" style="margin-top:16px;margin-bottom:0">
@@ -818,8 +825,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
               ?
               <span class="tip-pop" role="tooltip"><b>轻度</b>：近直线曲线段转直 + 折线去抖（零变形，对直边图形有效）。<br><b>标准</b>：对曲线路径重采样简化——这是减少曲线节点的关键档位。<br><b>强化</b>：标准 + 对浅转角做曲线化，边界更圆润。<br>直角与锐角受转角阈值保护，不会被磨圆。<br>注意：容差需大于边缘抖动的峰峰值才会删点，建议 0.5 以上。</span>
             </span>
-            <input type="range" id="smoothEdge" min="0" max="3" value="3">
-            <output id="smoothEdgeV">强化</output>
+            <input type="range" id="smoothEdge" min="0" max="3" value="1">
+            <output id="smoothEdgeV">轻度</output>
           </div>
 
           <div class="hint hidden" id="mergeStatus" style="margin-top:12px"></div>
@@ -1232,8 +1239,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           </div>
           <div class="row" id="mergeTolRow3" style="margin-top:12px;margin-bottom:0">
             <label for="mergeTol3">锚点简化容差 <span class="hint">px</span></label>
-            <input type="range" id="mergeTol3" min="1" max="200" value="150">
-            <output id="mergeTolV3">1.50</output>
+            <input type="range" id="mergeTol3" min="1" max="200" value="50">
+            <output id="mergeTolV3">0.50</output>
           </div>
 
           <div class="row" style="margin-top:16px;margin-bottom:0">
@@ -1256,8 +1263,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
               ?
               <span class="tip-pop" role="tooltip"><b>轻度</b>：近直线曲线段转直 + 折线去抖（零变形）。<br><b>标准</b>：对曲线路径重采样简化，是减少曲线节点的关键档位。<br><b>强化</b>：标准 + 浅转角曲线化。<br>直角与锐角受保护。容差建议 0.5 以上（需大于抖动峰峰值）。</span>
             </span>
-            <input type="range" id="smoothEdge3" min="0" max="3" value="3">
-            <output id="smoothEdgeV3">强化</output>
+            <input type="range" id="smoothEdge3" min="0" max="3" value="1">
+            <output id="smoothEdgeV3">轻度</output>
           </div>
 
           <div class="hint hidden" id="mergeStatus3" style="margin-top:12px"></div>
