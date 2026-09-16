@@ -924,7 +924,7 @@ function showMergeStatus(i, stats, warnings) {
     const cut = before - after;
     const pct = before ? Math.round(cut / before * 100) : 0;
     lines.push(`同色路径合并：图形 <b>${before} → ${after}</b> 个（减少 ${cut}，${pct}%）`
-      + ` · 合并 ${stats.mergeGroups} 组 · 简化锚点 ${stats.anchorsPruned || 0}`);
+      + ` · 合并 ${stats.mergeGroupsDone || stats.mergeGroups} 组 · 简化锚点 ${stats.anchorsPruned || 0}`);
     const shown = stats.colors.slice(0, 8).map(escapeHtml).join(' ');
     lines.push(`检测到 <b>${stats.colorCount}</b> 种颜色：${shown}`
       + (stats.colorCount > 8 ? ` 等 ${stats.colorCount} 种` : '')

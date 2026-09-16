@@ -321,6 +321,58 @@ function styleDecls(el) {
   return map;
 }
 
+/**
+ * 解析 <style> 中的规则（保留选择器原文，用 el.matches 求匹配）。
+ * 若不解析 <style>，用 CSS 定义填充色的 SVG 会退回默认黑，导出的 EPS 颜色全错。
+ */
+function parseStyleSheet(doc) {
+  const list = [];
+  doc.querySelectorAll('style').forEach(node => {
+    const txt = node.textContent || '';
+    const re = /([^{}]+)\{([^}]*)\}/g;
+    let m;
+    while ((m = re.exec(txt)) !== null) {
+      const decls = {};
+      m[2].split(';').forEach(p => {
+        const i = p.indexOf(':');
+        if (i <= 0) return;
+        const k = p.slice(0, i).trim();
+        const v = p.slice(i + 1).trim();
+        if (k && v) decls[k] = v;
+      });
+      if (!Object.keys(decls).length) continue;
+      m[1].split(',').forEach(s => {
+        const sel = s.trim();
+        if (sel) list.push({ sel, decls });
+      });
+    }
+  });
+  return list;
+}
+
+const CSS_CACHE = new WeakMap();
+function cssFor(el, rules) {
+  if (!rules.length) return null;
+  const hit = CSS_CACHE.get(el);
+  if (hit && hit.rules === rules) return hit.value;
+  let out = null;
+  for (const r of rules) {                 // 后者覆盖前者，近似 CSS 层叠
+    try {
+      if (el.matches(r.sel)) out = Object.assign(out || {}, r.decls);
+    } catch (e) { /* 不支持的伪类等选择器 */ }
+  }
+  CSS_CACHE.set(el, { rules, value: out });
+  return out;
+}
+
+/** 合并 CSS 规则与 inline style（inline 优先级更高，与浏览器一致） */
+function effDecls(el, rules) {
+  const css = cssFor(el, rules);
+  const inline = styleDecls(el);
+  if (!css) return inline;
+  return Object.assign({}, css, inline);
+}
+
 function pick(el, decls, prop, inherited, def) {
   if (decls[prop] !== undefined && decls[prop] !== '') return decls[prop];
   if (el.hasAttribute(prop)) return el.getAttribute(prop);
@@ -378,6 +430,9 @@ export function svgToCmykEps(svgText, opts = {}) {
   W = Math.ceil(W * 100) / 100;
   H = Math.ceil(H * 100) / 100;
 
+  /* <style> 规则表：CSS 定义的颜色在 SVG 里很常见，不解析会全部退回黑色 */
+  const cssRules = parseStyleSheet(doc);
+
   /* 渐变 / pattern 平均色缓存 */
   const gradAvg = id => {
     const g = doc.getElementById(id);
@@ -388,9 +443,11 @@ export function svgToCmykEps(svgText, opts = {}) {
     if (!stops.length) return null;
     let r = 0, gg = 0, b = 0, ws = 0;
     for (const s of stops) {
-      const rgb = parseColor(s.getAttribute('stop-color') || (styleDecls(s)['stop-color']));
+      const sd = effDecls(s, cssRules);
+      const rgb = parseColor(s.getAttribute('stop-color') || sd['stop-color']);
       if (!rgb) continue;
-      const w = parseFloat(s.getAttribute('stop-opacity') ?? '1') || 0;
+      const rawOp = s.getAttribute('stop-opacity') || sd['stop-opacity'];
+      const w = parseFloat(rawOp == null ? '1' : rawOp) || 0;
       r += rgb[0] * w; gg += rgb[1] * w; b += rgb[2] * w; ws += w;
     }
     if (!ws) return null;
@@ -409,12 +466,20 @@ export function svgToCmykEps(svgText, opts = {}) {
   const cmds = [];     // 每个图形的 EPS 片段
   let shapes = 0;
 
+  /* 根元素样式同样向下继承（<svg fill="…"> 是合法写法） */
+  const rootDecls = effDecls(svg, cssRules);
+  const rootStyle = {};
+  for (const k of ['fill', 'stroke', 'fill-rule', 'stroke-width', 'opacity', 'fill-opacity', 'stroke-opacity']) {
+    const v = pick(svg, rootDecls, k, undefined);
+    if (v !== undefined) rootStyle[k] = v;
+  }
+
   function walk(nodes, pCtm, pStyle) {
     for (const el of nodes) {
       const tag = el.tagName.toLowerCase();
 
       if (tag === 'g' || tag === 'a' || tag === 'switch') {
-        const decls = styleDecls(el);
+        const decls = effDecls(el, cssRules);
         const ctm = matMul(pCtm, parseTransform(el.getAttribute('transform')));
         const st = { ...pStyle };
         for (const k of ['fill', 'stroke', 'fill-rule', 'stroke-width', 'opacity', 'fill-opacity', 'stroke-opacity']) {
@@ -435,7 +500,7 @@ export function svgToCmykEps(svgText, opts = {}) {
       }
       if (!SHAPE_TAGS.has(tag)) continue;
 
-      const decls = styleDecls(el);
+      const decls = effDecls(el, cssRules);
       const ctm = matMul(pCtm, parseTransform(el.getAttribute('transform')));
 
       let fill = parsePaint(pick(el, decls, 'fill', pStyle.fill, 'black'));
@@ -490,7 +555,7 @@ export function svgToCmykEps(svgText, opts = {}) {
     }
   }
 
-  walk(body, ID, {});
+  walk(body, ID, rootStyle);
 
   /* ---------- 组装 EPS ---------- */
   const esc = s => String(s).replace(/([()\\])/g, '\\$1');

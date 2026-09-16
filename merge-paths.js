@@ -115,44 +115,55 @@ function parseDecls(str) {
   return map;
 }
 
-/** 收集 <style> 中的 .class{...} 规则 */
+/**
+ * 收集 <style> 中的全部规则（保留选择器原文，不限简单类选择器）。
+ * 用 el.matches() 在原文档里求匹配，因此 #id / 后代 / 属性选择器也能正确解析——
+ * 若只支持 `.class`，被忽略的规则会让元素退回默认黑，导致颜色分组错误、
+ * 进而把不同颜色的图形错误合并（并因保留 id 让 CSS 继续覆盖，产生视觉破坏）。
+ */
 function collectStyleRules(doc) {
-  const rules = new Map();
+  const list = [];
   doc.querySelectorAll('style').forEach(node => {
     const txt = node.textContent || '';
     const re = /([^{}]+)\{([^}]*)\}/g;
     let m;
     while ((m = re.exec(txt)) !== null) {
-      const sel = m[1].trim();
       const decls = parseDecls(m[2]);
-      sel.split(',').forEach(s => {
-        const cls = s.trim().replace(/^\./, '');
-        if (!cls || /[ >#:[*]/.test(cls)) return;      // 只处理简单类选择器
-        rules.set(cls, Object.assign(rules.get(cls) || {}, decls));
+      if (!Object.keys(decls).length) continue;
+      m[1].split(',').forEach(s => {
+        const sel = s.trim();
+        if (sel) list.push({ sel, decls });
       });
     }
   });
-  return rules;
+  return list;
 }
 
-const classCache = new WeakMap();
-function classDecls(el, rules) {
-  if (classCache.has(el)) return classCache.get(el);
+const cssCache = new WeakMap();
+function cssDecls(el, rules) {
+  if (!rules.length) return EMPTY_DECLS;
+  let per = cssCache.get(el);
+  if (per && per.rules === rules) return per.value;
   let out = {};
-  const cls = (el.getAttribute('class') || '').split(/\s+/).filter(Boolean);
-  cls.forEach(c => { if (rules.has(c)) out = Object.assign(out, rules.get(c)); });
-  classCache.set(el, out);
+  for (const r of rules) {                 // 按出现顺序，后者覆盖前者（近似 CSS 层叠）
+    try {
+      if (el.matches(r.sel)) out = Object.assign(out, r.decls);
+    } catch (e) { /* 不支持的伪类等选择器，忽略 */ }
+  }
+  cssCache.set(el, { rules, value: out });
   return out;
 }
 
+const EMPTY_DECLS = {};
+
 /**
- * 取属性值，优先级：inline style > <style> 类规则 > presentation attribute > 继承
+ * 取属性值，优先级：inline style > <style> 规则 > presentation attribute > 继承
  */
 function pickProp(el, prop, inherited, rules) {
   const inline = parseDecls(el.getAttribute('style'))[prop];
   if (inline !== undefined && inline !== '') return inline;
-  const fromClass = classDecls(el, rules)[prop];
-  if (fromClass !== undefined && fromClass !== '') return fromClass;
+  const fromCss = cssDecls(el, rules)[prop];
+  if (fromCss !== undefined && fromCss !== '') return fromCss;
   if (el.hasAttribute(prop)) return el.getAttribute(prop);
   return inherited;
 }
@@ -336,8 +347,10 @@ export function flattenToAbsoluteD(d, m) {
         break;
       }
       case 'C': {
-        const a = T(n(), n()), b = T(n(), n()), e = T(n(), n());
+        const x1 = n(), y1 = n(), x2 = n(), y2 = n(), ex = n(), ey = n();
+        const a = T(x1, y1), b = T(x2, y2), e = T(ex, ey);
         out.push(`C ${f(a[0])} ${f(a[1])} ${f(b[0])} ${f(b[1])} ${f(e[0])} ${f(e[1])}`);
+        cx = ex; cy = ey;          // 必须更新当前点：后续 Q/A 的控制点依赖它
         break;
       }
       case 'Q': {
@@ -498,7 +511,18 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   /* ---------- 遍历：收集候选路径 + 全部颜色 ---------- */
   const candidates = [];        // { el, d, key(css颜色), ctm }
   const colorSet = new Set();
-  const skipped = { gradient: 0, open: 0, hidden: 0, masked: 0, nonRgb: 0, image: 0, other: 0 };
+  const skipped = {
+    gradient: 0,      // 渐变 / 图案填充
+    open: 0,          // 开放线条、无填充
+    hidden: 0,        // 位于 defs/clipPath/mask/… 内
+    masked: 0,        // 自身带 clip-path / mask
+    semiTransparent: 0,
+    unknownStyle: 0,  // 含 <style> 但填充色来源不明
+    nestedSvg: 0,
+    nonRgb: 0,
+    image: 0,
+    other: 0
+  };
   const statsCollect = { shapes: 0, strokes: 0 };
 
   const inHidden = el => {
@@ -523,12 +547,17 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
 
       if (tag === 'image' || tag === 'foreignobject') { skipped.image++; continue; }
 
+      /* 内嵌 <svg> 自带 viewBox / x / y / width / height，坐标语义与 <g> 不同，
+         保守跳过其内容而不是按 <g> 处理（否则会算错坐标） */
+      if (tag === 'svg') { skipped.nestedSvg++; continue; }
+
       if (tag === 'text' || tag === 'tspan' || tag === 'textpath' || tag === 'use') {
         collectColor(parsePaint(pickProp(el, 'fill', pStyle.fill, rules)));
+        collectColor(parsePaint(pickProp(el, 'stroke', pStyle.stroke, rules)));
         continue;
       }
 
-      if (tag === 'g' || tag === 'a' || tag === 'switch' || tag === 'svg') {
+      if (tag === 'g' || tag === 'a' || tag === 'switch') {
         const ctm = matMul(pCtm, parseTransformStr(el.getAttribute('transform')));
         const st = {
           fill: pickProp(el, 'fill', pStyle.fill, rules),
@@ -558,7 +587,11 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
       collectColor(fill);
       collectColor(stroke);
 
-      // 屏幕显示用的 fill（继承默认黑）
+      /* 存在 <style> 却没有显式 fill 来源时，填充色可能来自未解析的选择器
+         （#id / 后代 / 属性选择器等），此时不能按默认黑处理，否则会错误合并 */
+      if (fillRaw === undefined && rules.length > 0) { skipped.unknownStyle++; continue; }
+
+      // 屏幕显示用的 fill（无显式来源时 SVG 默认黑）
       const effFill = fill.kind === 'inherit' ? { kind: 'rgb', rgb: [0, 0, 0] } : fill;
 
       if (inHidden(el)) { skipped.hidden++; continue; }
@@ -571,7 +604,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
 
       const op = parseFloat(pickProp(el, 'opacity', pStyle.opacity, rules));
       const fop = parseFloat(pickProp(el, 'fill-opacity', pStyle.fillOpacity, rules));
-      if ((!isNaN(op) && op < 0.999) || (!isNaN(fop) && fop < 0.999)) { skipped.hidden++; continue; }
+      if ((!isNaN(op) && op < 0.999) || (!isNaN(fop) && fop < 0.999)) { skipped.semiTransparent++; continue; }
 
       const rawD = shapeToD(el);
       if (!rawD) continue;
@@ -589,7 +622,14 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   }
 
   onProgress?.(5, '分析结构');
-  walk(Array.from(root.children), ID, {});
+  /* 根元素的样式同样向子级继承（<svg fill="…"> 是合法写法），先收集为初始样式栈 */
+  const rootStyle = {
+    fill: pickProp(root, 'fill', undefined, rules),
+    stroke: pickProp(root, 'stroke', undefined, rules),
+    opacity: pickProp(root, 'opacity', undefined, rules),
+    fillOpacity: pickProp(root, 'fill-opacity', undefined, rules)
+  };
+  walk(Array.from(root.children), ID, rootStyle);
 
   /* ---------- 按颜色分组（同色 ≥2 个才值得合并） ---------- */
   const groups = new Map();
@@ -608,6 +648,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     colors: Array.from(colorSet),
     groups: groups.size,
     mergeGroups: mergeable.length,
+    mergeGroupsDone: 0,
     beforeShapes: candidates.length,
     afterShapes: candidates.length,
     mergedShapes: 0,
@@ -622,6 +663,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   if (!mergeable.length) {
     stats.ms = performance.now() - t0;
     warnings.push('没有找到可合并的同色闭合路径组（需要同色 ≥ 2 个）');
+    pushSkipWarnings(warnings, skipped);
     return { svg: svgText, stats, warnings };
   }
 
@@ -747,6 +789,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   stats.mergedShapes = merged;
   stats.removedNodes = removed;
   stats.anchorsPruned = anchorsPruned;
+  stats.mergeGroupsDone = results.size;      // 实际成功的组数（可能少于 mergeGroups）
 
   /* ---------- 序列化 ---------- */
   let out = new XMLSerializer().serializeToString(root);
@@ -755,12 +798,20 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   stats.ms = performance.now() - t0;
   onProgress?.(100, '完成');
 
+  pushSkipWarnings(warnings, skipped);
+
+  return { svg: out, stats, warnings };
+}
+
+/** 把各类跳过统计汇总成用户可读的提示 */
+function pushSkipWarnings(warnings, skipped) {
   if (skipped.gradient) warnings.push(skipped.gradient + ' 个渐变/图案填充路径已跳过合并');
   if (skipped.masked) warnings.push(skipped.masked + ' 个带遮罩（clip-path/mask）的对象已跳过');
   if (skipped.open) warnings.push(skipped.open + ' 个开放线条/无填充路径已跳过');
+  if (skipped.semiTransparent) warnings.push(skipped.semiTransparent + ' 个半透明对象已跳过（合并会改变叠加效果）');
+  if (skipped.unknownStyle) warnings.push(skipped.unknownStyle + ' 个对象的填充色来源无法确定，已跳过合并');
+  if (skipped.nestedSvg) warnings.push(skipped.nestedSvg + ' 个内嵌 SVG 已跳过');
   if (skipped.nonRgb) warnings.push('存在无法解析为 RGB 的颜色值，相关路径已跳过');
-
-  return { svg: out, stats, warnings };
 }
 
 /**
@@ -784,31 +835,31 @@ function pruneAnchors(item, tol) {
     });
 
     if (allStraight) {
-      // 全直线闭合环：以两个尽量远的锚点为基准，分段做 D-P
+      /* 全直线闭合环：以两个相距较远的锚点 a、b 把环拆成两段，各做 D-P。
+         注意全程使用**原始 segment 索引**（曾把环索引当 segment 索引删除，会删错点破坏形状） */
       const pts = segs.map(s => ({ x: s.point.x, y: s.point.y }));
       const n = pts.length;
-      const [a, b] = ringAnchors(pts);
-      const ring = pts.slice(a).concat(pts.slice(0, a));   // 从 a 开始绕一圈
-      const flipIdx = (b - a + n) % n;                     // b 在 ring 中的位置
+      const [a, b] = ringAnchors(pts);            // 返回升序 a < b
 
       const keep = new Uint8Array(n);
-      keep[0] = 1;                                          // a 保留
-      keep[flipIdx] = 1;                                    // b 保留
-      // 段 1：0..flipIdx
-      const seg1 = ring.slice(0, flipIdx + 1);
-      if (seg1.length > 2) {
-        const k1 = dpKeep(seg1, tol);
-        for (let i = 0; i <= flipIdx; i++) if (k1[i]) keep[i] = 1;
+      keep[a] = 1;
+      keep[b] = 1;
+
+      // 段 1：a → b（正向）
+      const idx1 = [];
+      for (let i = a; i <= b; i++) idx1.push(i);
+      if (idx1.length > 2) {
+        const k1 = dpKeep(idx1.map(i => pts[i]), tol);
+        idx1.forEach((oi, j) => { if (k1[j]) keep[oi] = 1; });
       }
-      // 段 2：flipIdx..n（含回到起点）
-      const seg2 = ring.slice(flipIdx).concat([ring[0]]);
-      if (seg2.length > 2) {
-        const k2 = dpKeep(seg2, tol);
-        for (let i = 0; i < seg2.length; i++) {
-          if (!k2[i]) continue;
-          const idx = (flipIdx + i) % n;
-          keep[idx] = 1;
-        }
+
+      // 段 2：b → 环回 a（跨越数组末端）
+      const idx2 = [];
+      for (let i = b; i < n; i++) idx2.push(i);
+      for (let i = 0; i <= a; i++) idx2.push(i);
+      if (idx2.length > 2) {
+        const k2 = dpKeep(idx2.map(i => pts[i]), tol);
+        idx2.forEach((oi, j) => { if (k2[j]) keep[oi] = 1; });
       }
 
       for (let i = n - 1; i >= 0; i--) {
