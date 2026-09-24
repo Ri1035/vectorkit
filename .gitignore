@@ -8,6 +8,5 @@ dist/
 Thumbs.db
 
 # 本地临时测试文件
-_*.html
-_*.js
-_*~
+_*
+*.bak
