@@ -992,6 +992,12 @@ const TEMPLATES = [
     post: { merge: true, tol: 150, frag: true, fragTol: 6, edge: 3 }
   },
   {
+    id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
+    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
+    post: { merge: true, tol: 100, frag: true, fragTol: 6, edge: 3 }
+  },
+  {
     id: 'tiny', name: '极小文件', desc: 'CDR 打开最快 · 接受少量简化',
     params: { filterSpeckle: 16, layerDifference: 20, maxColors: 0, cornerThreshold: 60, lengthThreshold: 16 },
     pre: { size: 1200, denoise: true, smooth: 1, colors: 48 },
@@ -1060,6 +1066,7 @@ function applyTemplate(tpl) {
     setCtlCheck('#preDenoise', tpl.pre.denoise);
     setCtlValue('#preSmooth', tpl.pre.smooth, 'input');
     setCtlValue('#preColors', tpl.pre.colors, 'change');
+    setCtlCheck('#preUpsample', tpl.pre.upsample);
   }
   if (tpl.post) {
     setCtlCheck('#mergeOn', tpl.post.merge);
