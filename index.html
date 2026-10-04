@@ -705,6 +705,11 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <button class="set-tab" data-set="out" type="button">输出</button>
         </div>
         <div class="set-pane on" data-pane="tpl">
+          <div class="card hidden" id="recoBox" style="margin-bottom:12px;padding:12px;border:1px dashed var(--c-violet);border-radius:12px;background:var(--surface-2)">
+            <div style="font-size:13px;font-weight:600;color:var(--text)"><span id="recoType">检测中…</span><span id="recoMeta" style="font-weight:400;color:var(--text-3);font-size:12px"></span></div>
+            <div id="recoReason" style="font-size:12px;color:var(--text-2);margin:5px 0 9px"></div>
+            <button class="preset on" id="recoApply" type="button" style="width:100%"><span class="p1">套用推荐</span><span class="p2">一键配置全部参数</span></button>
+          </div>
           <div class="hint" style="margin-bottom:10px">点击即套用整套配置（覆盖引擎参数、预处理与后处理设置）</div>
           <div class="presets" id="templates"></div>
           <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>

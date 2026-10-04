@@ -936,6 +936,8 @@ function clearS1() {
   $('#viewToggle1').style.display = 'none';
   $('#stats1').classList.add('hidden');
   $('#stage1').innerHTML = emptyState(ICON_IMAGE, '载入一张图片后开始转换', '转换全程在本地完成，不产生任何网络请求');
+  const reco = $('#recoBox');
+  if (reco) reco.classList.add('hidden');
 }
 
 wireDrop($('#drop1'), async file => {
@@ -953,6 +955,8 @@ wireDrop($('#drop1'), async file => {
     fileTag($('#file1'), file, clearS1);
     $('#run1').disabled = false;
     $('#rerun1').classList.remove('hidden');
+    /* 智能推荐：异步检测图像类型（不阻塞预览） */
+    setTimeout(updateRecommendation, 60);
   } catch (err) {
     alert('无法读取该图片：' + (err.message || err));
   }
@@ -1103,6 +1107,128 @@ function renderTemplates() {
     host.appendChild(b);
   });
 }
+
+/* ============================ 智能推荐 ============================
+ * 对标 Vector Magic 的图像分类学（官方公开教程）：照片 / 带融合边缘的作品 /
+ * 无融合边缘的作品。纯规则检测，全部在本地完成：
+ *   - 唯一色数（采样 4bit/通道 箱）
+ *   - 过渡像素占比（与相邻像素色差 12–100）→ 高 = 抗锯齿混合边缘
+ *   - 锐利边界占比（色差 ≥ 100）→ 高 = 色块分明
+ *   - 微渐变占比（色差 6–30）→ 高 = 连续色调（照片）
+ */
+
+const TYPE_LABELS = {
+  photo: '照片 / 连续色调图像',
+  blend: '带融合边缘的图标（抗锯齿）',
+  flat: '色块分明的图标（无融合）'
+};
+const QUALITY_LABELS = { low: '分辨率偏低', mid: '分辨率中等', high: '分辨率充足' };
+
+function analyzeImage(imgData) {
+  const { width: w, height: h, data } = imgData;
+  const step = Math.max(1, Math.round(Math.min(w, h) / 420));
+  let opaque = 0, soft = 0, sharp = 0, grad = 0, events = 0, satSum = 0;
+  const seen = new Map();
+  for (let y = 0; y < h - 1; y += step) {
+    for (let x = 0; x < w - 1; x += step) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 8) continue;
+      opaque++;
+      const mx = Math.max(data[i], data[i + 1], data[i + 2]);
+      const mn = Math.min(data[i], data[i + 1], data[i + 2]);
+      satSum += mx - mn;
+      const key = ((data[i] >> 3) << 9) | ((data[i + 1] >> 3) << 5) | (data[i + 2] >> 3);
+      seen.set(key, (seen.get(key) || 0) + 1);
+      let d = 0;
+      if (x + 1 < w) {
+        const j = (y * w + x + 1) * 4;
+        if (data[j + 3] >= 8) {
+          const dr = data[i] - data[j], dg = data[i + 1] - data[j + 1], db = data[i + 2] - data[j + 2];
+          const dd = Math.sqrt(dr * dr + dg * dg + db * db);
+          if (dd > d) d = dd;
+        }
+      }
+      if (y + 1 < h) {
+        const j = ((y + 1) * w + x) * 4;
+        if (data[j + 3] >= 8) {
+          const dr = data[i] - data[j], dg = data[i + 1] - data[j + 1], db = data[i + 2] - data[j + 2];
+          const dd = Math.sqrt(dr * dr + dg * dg + db * db);
+          if (dd > d) d = dd;
+        }
+      }
+      if (d >= 12 && d < 100) soft++;
+      else if (d >= 100) sharp++;
+      if (d >= 6 && d < 30) grad++;
+      events++;
+    }
+  }
+  const colors = seen.size;
+  const softRatio = events ? soft / events : 0;
+  const sharpRatio = events ? sharp / events : 0;
+  const gradRatio = events ? grad / events : 0;
+  const satAvg = opaque ? satSum / opaque / 255 : 0;
+  /* 边界事件中「渐变过渡」的占比：抗锯齿混合边缘的标志
+     （色块内部相邻像素差异为 0 不计入；全图无强边界 = 连续色调） */
+  const edgeEvents = soft + sharp;
+  const edgeBlendRatio = edgeEvents ? soft / edgeEvents : 0;
+
+  let type;
+  if (edgeEvents / (events || 1) < 0.005 && colors > 100) type = 'photo';
+  else if (colors <= 2) type = 'line';
+  else if (edgeBlendRatio > 0.25) type = 'blend';
+  else type = 'flat';
+
+  const minSide = Math.min(w, h);
+  const quality = minSide < 600 ? 'low' : minSide <= 1400 ? 'mid' : 'high';
+  return {
+    type, quality, colors, satAvg, softRatio, sharpRatio, gradRatio,
+    edgeBlendRatio, edgeEvents: edgeEvents / (events || 1),
+    opaque, sampled: events
+  };
+}
+
+function recommendFromAnalysis(a) {
+  if (a.type === 'photo') {
+    return { tplId: 'photo', reason: '连续色调图像——走照片预设并限制 48 色，抑制色块数量的同时保留渐变层次。' };
+  }
+  if (a.type === 'blend') {
+    return { tplId: 'smooth', reason: '检测到抗锯齿混合边缘——「平滑增强」的全曲线拟合 + 上采样能最精确地还原轮廓。' };
+  }
+  if (a.type === 'line') {
+    return { tplId: 'line', reason: '极少色数的线条图形——黑白描摹模式最干净。' };
+  }
+  return { tplId: 'daily', reason: '色块分明的扁平图形——轻度平滑即可，无需额外处理。' };
+}
+
+function updateRecommendation() {
+  const box = $('#recoBox');
+  if (!box) return;
+  if (!S1.imageData) { box.classList.add('hidden'); return; }
+  let a, reco;
+  try {
+    a = analyzeImage(S1.imageData);
+    reco = recommendFromAnalysis(a);
+  } catch (e) {
+    box.classList.add('hidden');
+    return;
+  }
+  const tpl = TEMPLATES.find(t => t.id === reco.tplId);
+  if (!tpl) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const meta = [];
+  meta.push(QUALITY_LABELS[a.quality]);
+  meta.push(a.colors + ' 色');
+  meta.push('采样 ' + a.sampled + ' px');
+  $('#recoType').textContent = '检测到：' + (TYPE_LABELS[a.type] || a.type);
+  $('#recoMeta').textContent = '　·　' + meta.join(' · ');
+  $('#recoReason').textContent = reco.reason;
+  const btn = $('#recoApply');
+  btn.querySelector('.p1').textContent = '套用推荐：' + tpl.name;
+  btn.onclick = () => applyTemplate(tpl);
+}
+
+/** 供测试直接调用（生产流程走 updateRecommendation） */
+export { analyzeImage, recommendFromAnalysis };
 
 $('#advToggle').addEventListener('click', () => {
   const t = $('#advToggle');
@@ -1365,6 +1491,7 @@ $('#demo1').addEventListener('click', () => {
   S1.file = { name, size: Math.round(S1.srcUrl.length * 0.72) };
   fileTag($('#file1'), S1.file, clearS1);
   $('#run1').disabled = false;
+  setTimeout(updateRecommendation, 60);
 });
 
 /* ============================ Tab2 · 矢量转位图 ============================ */
