@@ -10,3 +10,6 @@ Thumbs.db
 # 本地临时测试文件
 _*
 *.bak
+
+# 本地测试素材
+clipboard-test.jpg
