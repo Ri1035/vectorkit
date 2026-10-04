@@ -535,7 +535,14 @@ export function svgToCmykEps(svgText, opts = {}) {
       if (!d) continue;
 
       const flip = [1, 0, 0, -1, 0, H];       // SVG y 向下 → EPS y 向上
-      const full = matMul(flip, ctm);
+      /* viewBox 与 width/height 不一致（如上采样描摹：几何在放大网格上，
+         声明尺寸为原始大小）→ 按 viewBox→画布 等比缩放坐标 */
+      let vbScale = ID;
+      if (vb.length === 4 && vb[2] > 0 && vb[3] > 0
+        && (Math.abs(vb[2] - W) > 1e-6 || Math.abs(vb[3] - H) > 1e-6)) {
+        vbScale = [W / vb[2], 0, 0, H / vb[3], 0, 0];
+      }
+      const full = matMul(flip, matMul(vbScale, ctm));
       const ops = dToEpsOps(d, full);
       if (!ops.trim()) continue;
       shapes++;

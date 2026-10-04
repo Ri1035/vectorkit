@@ -174,15 +174,15 @@ function revoke(u) {
 
 const stripExt = n => n.replace(/\.[^.]+$/, '');
 
-function ensureSvgSize(svgText, w, h) {
+function ensureSvgSize(svgText, w, h, force = false) {
   try {
     const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
     if (doc.querySelector('parsererror')) return svgText;
     const el = doc.documentElement;
     if (!el.getAttribute('xmlns')) el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     if (!el.getAttribute('viewBox')) el.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    if (!el.getAttribute('width')) el.setAttribute('width', String(w));
-    if (!el.getAttribute('height')) el.setAttribute('height', String(h));
+    if (force || !el.getAttribute('width')) el.setAttribute('width', String(w));
+    if (force || !el.getAttribute('height')) el.setAttribute('height', String(h));
     return new XMLSerializer().serializeToString(el);
   } catch {
     return svgText;
@@ -480,7 +480,8 @@ updateOutputSummaries();
 
 const PRE_UI = {
   size: '#preSize', denoise: '#preDenoise', smooth: '#preSmooth',
-  smoothV: '#preSmoothV', colors: '#preColors', status: '#preStatus', sum: '#sumPre'
+  smoothV: '#preSmoothV', colors: '#preColors', status: '#preStatus', sum: '#sumPre',
+  upsample: '#preUpsample'
 };
 
 function collectPreOptions() {
@@ -488,9 +489,11 @@ function collectPreOptions() {
   const colors = parseInt($(PRE_UI.colors).value, 10) || 0;
   const denoise = $(PRE_UI.denoise).checked;
   const smooth = parseInt($(PRE_UI.smooth).value, 10) || 0;
+  const upsampleEl = $(PRE_UI.upsample);
+  const upsample = upsampleEl ? upsampleEl.checked : false;
   return {
-    maxSide: size, denoise, smooth, maxColors: colors,
-    active: !!size || denoise || !!smooth || colors >= 2
+    maxSide: size, denoise, smooth, maxColors: colors, upsample,
+    active: !!size || denoise || !!smooth || colors >= 2 || upsample
   };
 }
 
@@ -498,6 +501,7 @@ function collectPreOptions() {
 function updatePreSummary() {
   const o = collectPreOptions();
   const parts = [o.maxSide ? o.maxSide + 'px' : '原始尺寸'];
+  if (o.upsample) parts.push('小图上采样');
   if (o.denoise) parts.push('去噪');
   if (o.smooth) parts.push('平滑' + o.smooth);
   parts.push(o.maxColors >= 2 ? o.maxColors + ' 色' : '不限色');
@@ -522,8 +526,10 @@ $(PRE_UI.smooth).addEventListener('input', e => {
   updatePreSummary();
   S1.lastKey = '';
 });
-[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise].forEach(sel => {
-  $(sel).addEventListener('change', () => {
+[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise, PRE_UI.upsample].forEach(sel => {
+  const el = $(sel);
+  if (!el) return;
+  el.addEventListener('change', () => {
     updatePreSummary();
     S1.lastKey = '';              // 预处理设置变化必须重新转换
   });
@@ -827,10 +833,11 @@ async function runVectorize(force) {
       return;
     }
 
-    /* 图像预处理：降采样 → 去噪 → 保边平滑 → 颜色量化，
+    /* 图像预处理：降采样 → 小图上采样 → 去噪 → 保边平滑 → 颜色量化，
        直接减少送入引擎的颜色种类，从源头抑制色块数量 */
     prog.stage(14, '图像预处理');
     let pw = S1.w, ph = S1.h, rgba;
+    let upsampled = 0;
     if (preOpts.active) {
       await yieldFrame();
       const pre = preprocess(S1.imageData, {
@@ -840,6 +847,7 @@ async function runVectorize(force) {
       showPreStatus(pre.stats);
       pw = pre.stats.width;
       ph = pre.stats.height;
+      upsampled = pre.stats.upsampled || 0;
       rgba = new Uint8Array(pre.imageData.data);
     } else {
       $(PRE_UI.status).classList.add('hidden');
@@ -892,7 +900,14 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
-    svgText = ensureSvgSize(svgText, pw, ph);
+    if (upsampled > 1) {
+      /* 描摹在上采样网格上进行：SVG 的 width/height 强制回写为原始尺寸，
+         viewBox 保持放大网格（浏览器自动等比缩放显示/打印尺寸）；
+         EPS 导出侧已支持 viewBox≠width 的等比缩放 */
+      svgText = ensureSvgSize(svgText, pw / upsampled, ph / upsampled, true);
+    } else {
+      svgText = ensureSvgSize(svgText, pw, ph);
+    }
     if (exportMode === 'legacy') {
       svgText = toLegacySvg(svgText);
     }

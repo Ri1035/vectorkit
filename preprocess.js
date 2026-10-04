@@ -56,6 +56,31 @@ export function downscaleImageData(src, maxSide) {
   return ctx.getImageData(0, 0, w, h);
 }
 
+/* ============================ 1b. 上采样 ============================ */
+
+/**
+ * 等比放大（高质量插值）。小图先放大 2× 再描摹，
+ * 抗锯齿边缘的台阶宽度减半，描摹输出天然更平滑。
+ * @param {ImageData} src
+ * @param {number} factor 放大倍数（2 = 2×）
+ * @returns {ImageData}
+ */
+export function upsampleImageData(src, factor = 2) {
+  const w = Math.round(src.width * factor);
+  const h = Math.round(src.height * factor);
+  if (w < 1 || h < 1 || w > 8000 || h > 8000) return src;
+
+  const from = makeCanvas(src.width, src.height);
+  from.getContext('2d').putImageData(src, 0, 0);
+
+  const to = makeCanvas(w, h);
+  const ctx = to.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(from, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
 /* ============================ 2. 中值滤波 ============================ */
 
 /**
@@ -344,22 +369,32 @@ export function quantizeMedianCut(src, maxColors) {
  * @param {boolean} opts.denoise    是否中值去噪
  * @param {number} opts.smooth      双边平滑强度 0–3（0 = 关闭）
  * @param {number} opts.maxColors   颜色数上限（0 = 不限）
+ * @param {boolean} opts.upsample   小图自动 2× 上采样（短边 < 800px 时生效）
  * @param {(p:number, label:string)=>void} opts.onProgress
  * @returns {{imageData: ImageData, stats: Object}}
  */
 export function preprocess(src, opts = {}) {
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, onProgress } = opts;
+  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
   let img = src;
   let colorAfterQuantize = colorsBefore;
+  let upsampled = 0;
 
   if (maxSide > 0 && Math.max(src.width, src.height) > maxSide) {
     onProgress?.(10, '降采样');
     const before = img.width + '×' + img.height;
     img = downscaleImageData(img, maxSide);
     steps.push(`降采样 ${before} → ${img.width}×${img.height}`);
+  }
+
+  if (upsample && Math.min(img.width, img.height) < 800) {
+    onProgress?.(20, '小图上采样');
+    const before = img.width + '×' + img.height;
+    img = upsampleImageData(img, 2);
+    upsampled = 2;
+    steps.push(`上采样 ${before} → ${img.width}×${img.height}`);
   }
 
   if (denoise) {
@@ -394,6 +429,9 @@ export function preprocess(src, opts = {}) {
       colorsAfter: colorAfterQuantize,
       width: img.width,
       height: img.height,
+      rawWidth: src.width,
+      rawHeight: src.height,
+      upsampled,
       ms,
       steps
     }

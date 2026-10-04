@@ -881,7 +881,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
 }
 
 /** 供测试直接调用（内部函数，生产流程不依赖） */
-export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, roundShallowCorners, turnAngleDeg };
+export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, turnAngleDeg };
 
 /** 把各类跳过统计汇总成用户可读的提示 */
 function pushSkipWarnings(warnings, skipped) {  if (skipped.gradient) warnings.push(skipped.gradient + ' 个渐变/图案填充路径已跳过合并');
@@ -972,44 +972,51 @@ function dpSimplifyStraightRuns(p, tol) {
   return removed;
 }
 
-/**
- * 轻度曲线化（边缘平滑档位 2–3）：
- * 只对「转角很浅」的折点生成对称句柄，把锯齿圆滑掉；
- * 转角超过阈值的点（接近直角/锐角）一律跳过，硬边不会被磨圆。
- */
-const ROUND_LEVELS = {
-  2: { maxTurn: 28, k: 0.16 },
-  3: { maxTurn: 42, k: 0.24 }
+/* 全曲线拟合档位：k = 句柄长度系数（相对相邻点距），protect = 硬边保护阈值
+ * （偏转角 turn 超过 protect 的锐角/直角保持尖角，其余全部曲线化） */
+const FIT_LEVELS = {
+  2: { k: 0.35, protect: 65 },
+  3: { k: 0.45, protect: 55 }
 };
 
-function roundShallowCorners(p, level) {
-  const cfg = ROUND_LEVELS[level];
-  if (!cfg) return 0;
+const STRAIGHT_TURN = 8;                 // 偏转角小于此值视为直线，不加句柄（保持 lineto）
+
+/**
+ * 全曲线拟合（硬边保护）：
+ * 对重建后的折线逐点生成 Catmull-Rom 风格切线句柄——
+ *   turn < STRAIGHT_TURN   → 直线点，不加句柄（EPS 里保持 lineto）
+ *   turn ≤ cfg.protect     → 平滑区：对称切线句柄（曲线过锚点、G1 连续）
+ *   turn > cfg.protect     → 锐角/直角：句柄清零（硬边不糊）
+ * 曲线精确过每个锚点，形状偏差≈0；与「重采样简化」配合，实现细节保留 + 边缘平滑。
+ * @returns {number} 加了句柄的点数
+ */
+function fitSmoothCurve(p, cfg) {
   const segs = p.segments;
   const n = segs.length;
-  if (n < 4) return 0;
-  let changed = 0;
+  if (n < 3 || !cfg) return 0;
+  let fitted = 0;
   for (let i = 0; i < n; i++) {
     const prev = segs[(i - 1 + n) % n];
     const cur = segs[i];
     const next = segs[(i + 1) % n];
+    /* 只处理折线点：已有句柄的段保持原样（不干扰引擎原始曲线） */
     if (!prev.handleOut.isZero() || !cur.handleIn.isZero()) continue;
     if (!cur.handleOut.isZero() || !next.handleIn.isZero()) continue;
-
-    const turn = turnAngleDeg(prev.point, cur.point, next.point);
-    if (turn > cfg.maxTurn) continue;    // 硬边保护
 
     const dPrev = cur.point.getDistance(prev.point);
     const dNext = cur.point.getDistance(next.point);
     const minD = Math.min(dPrev, dNext);
     if (minD < 0.8) continue;
 
-    const len = minD * cfg.k;
-    cur.handleIn = prev.point.subtract(cur.point).normalize(len);
-    cur.handleOut = next.point.subtract(cur.point).normalize(len);
-    changed++;
+    const turn = turnAngleDeg(prev.point, cur.point, next.point);
+    if (turn < STRAIGHT_TURN) continue;          // 直线点：保持直线
+    if (turn > cfg.protect) continue;            // 硬边保护：保持尖角
+
+    cur.handleIn = prev.point.subtract(cur.point).normalize(minD * cfg.k);
+    cur.handleOut = next.point.subtract(cur.point).normalize(minD * cfg.k);
+    fitted++;
   }
-  return changed;
+  return fitted;
 }
 
 /** 三次贝塞尔在参数 t 处的点 */
@@ -1056,6 +1063,12 @@ function dpKeepRingPoints(pts, tol) {
  * 把「近乎直线」的曲线段转为直线。
  * 很多曲线的控制点几乎落在起终点连线上（描摹抗锯齿边缘的产物），
  * 转直后既能被 D-P 简化，EPS 里也从 curveto 变成 lineto（更省）。
+ *
+ * ⚠️ 转直必须同时满足两个条件：
+ *   1. 控制点偏离起终点连线 ≤ tol（单段近似直线）
+ *   2. 该段与前一段的方向变化 < STRAIGHT_TURN（方向延续）
+ * 只看条件 1 会把「由多段近似直线拼成的弧线」整条转直——弧线每一段
+ * 单独看都接近直线，但方向在持续变化，转直后整圆变成多边形（锯齿根因）。
  */
 function flattenNearStraightCurves(p, tol) {
   const segs = p.segments;
@@ -1072,11 +1085,14 @@ function flattenNearStraightCurves(p, tol) {
       segDist({ x: c1.x, y: c1.y }, a.point, b.point),
       segDist({ x: c2.x, y: c2.y }, a.point, b.point)
     );
-    if (dev <= tol) {
-      a.handleOut.set(0, 0);
-      b.handleIn.set(0, 0);
-      changed++;
-    }
+    if (dev > tol) continue;
+    /* 方向延续检查：与前一段的偏转角大 → 处在弧线上，不能转直 */
+    const prev = segs[(i - 1 + n) % n];
+    const turn = turnAngleDeg(prev.point, a.point, b.point);
+    if (turn >= STRAIGHT_TURN) continue;
+    a.handleOut.set(0, 0);
+    b.handleIn.set(0, 0);
+    changed++;
   }
   return changed;
 }
@@ -1115,7 +1131,7 @@ function resampleSimplify(p, tol, smoothLevel) {
   for (const q of kept) p.add(new Point(q.x, q.y));
   p.closed = true;
 
-  if (smoothLevel >= 2) roundShallowCorners(p, smoothLevel);
+  if (smoothLevel >= 2) fitSmoothCurve(p, FIT_LEVELS[smoothLevel]);
   return n - kept.length;
 }
 

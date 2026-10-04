@@ -743,6 +743,15 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             <input type="checkbox" id="preDenoise" checked>
             <span style="flex:1;font-weight:600">中值去噪<span class="hint">　清除孤立噪点</span></span>
           </label>
+          <label class="row" style="cursor:pointer">
+            <input type="checkbox" id="preUpsample">
+            <span style="flex:1;font-weight:600">小图自动上采样
+              <span class="tip" tabindex="0" aria-label="上采样说明">
+                ?
+                <span class="tip-pop" role="tooltip">短边小于 800px 的小图，描摹前先放大 2×：边缘台阶宽度减半，输出更平滑。代价是节点数增多（可用「细节保留度」补偿）、处理时间变长。默认关闭；Logo、印章等小图建议开启。</span>
+              </span>
+            </span>
+          </label>
           <div class="row">
             <label for="preSmooth">保边平滑
               <span class="tip" tabindex="0" aria-label="保边平滑说明">
@@ -812,7 +821,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             <label for="smoothEdge">边缘平滑</label>
             <span class="tip anchor-right" tabindex="0" aria-label="边缘平滑说明">
               ?
-              <span class="tip-pop" role="tooltip"><b>轻度</b>：近直线曲线段转直 + 折线去抖（零变形，对直边图形有效）。<br><b>标准</b>：对曲线路径重采样简化——这是减少曲线节点的关键档位。<br><b>强化</b>：标准 + 对浅转角做曲线化，边界更圆润。<br>直角与锐角受转角阈值保护，不会被磨圆。<br>注意：容差需大于边缘抖动的峰峰值才会删点，建议 0.5 以上。</span>
+              <span class="tip-pop" role="tooltip"><b>轻度</b>：近直线曲线段转直 + 折线去抖（零变形，对直边图形有效）。<br><b>标准</b>：重采样简化 + <b>全曲线拟合</b>——简化后的轮廓整体拟合成过锚点的平滑曲线，锯齿显著减少，细节与直角保留。<br><b>强化</b>：同标准，曲线更饱满、平滑阈值更宽。<br>硬边保护：直角与锐角不会被磨圆。容差需大于边缘抖动的峰峰值才会删点，建议 0.5 以上。</span>
             </span>
             <input type="range" id="smoothEdge" min="0" max="3" value="1">
             <output id="smoothEdgeV">轻度</output>
@@ -1235,7 +1244,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             <label for="smoothEdge3">边缘平滑</label>
             <span class="tip anchor-right" tabindex="0" aria-label="边缘平滑说明">
               ?
-              <span class="tip-pop" role="tooltip"><b>轻度</b>：近直线曲线段转直 + 折线去抖（零变形）。<br><b>标准</b>：对曲线路径重采样简化，是减少曲线节点的关键档位。<br><b>强化</b>：标准 + 浅转角曲线化。<br>直角与锐角受保护。容差建议 0.5 以上（需大于抖动峰峰值）。</span>
+              <span class="tip-pop" role="tooltip"><b>轻度</b>：近直线曲线段转直 + 折线去抖（零变形）。<br><b>标准</b>：重采样简化 + <b>全曲线拟合</b>，锯齿显著减少，细节与直角保留。<br><b>强化</b>：同标准，曲线更饱满。<br>硬边保护。容差建议 0.5 以上（需大于抖动峰峰值）。</span>
             </span>
             <input type="range" id="smoothEdge3" min="0" max="3" value="1">
             <output id="smoothEdgeV3">轻度</output>
