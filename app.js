@@ -594,10 +594,10 @@ const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
 
 const PRESETS = {
   vtracer: {
-    logo:   { name: 'Logo 图标', desc: '扁平色块，边界锐利', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    logo:   { name: 'Logo 图标', desc: '扁平色块，边界锐利', opts: { clustering: 'color-cluster', hierarchical: 'stacked', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1, hierarchical: 'stacked' } },
     line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'cutout', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } }
   },
   potrace: {
@@ -627,7 +627,7 @@ const SCHEMA = {
 const ADV = {
   vtracer: [
     { key: 'clustering', label: '分区算法', type: 'select', options: [['color-cluster', '色彩聚类（通用）'], ['bw', '黑白二值'], ['watershed', '分水岭']] },
-    { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠'], ['cutout', '镂空（无接缝）']] },
+    { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠（无接缝）'], ['cutout', '镂空']] },
     { key: 'mode', label: '曲线模式', type: 'select', options: [['spline', '平滑样条'], ['polygon', '多边形'], ['pixel', '像素不简化']] },
     { key: 'colorPrecision', label: '颜色精度', type: 'range', min: 1, max: 8, step: 1, def: 6 },
     { key: 'pathPrecision', label: '路径精度', type: 'range', min: 0, max: 8, step: 1, def: 2 },
@@ -993,13 +993,13 @@ const TEMPLATES = [
     id: 'lean', name: '节点精简', desc: 'EPS 线条更顺 · 节点减约 2/3',
     params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 8 },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: true, tol: 150, frag: true, fragTol: 6, edge: 3 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 6, edge: 3 }
   },
   {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
     params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
-    post: { merge: true, tol: 100, frag: true, fragTol: 6, edge: 3 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 6, edge: 3 }
   },
   {
     id: 'tiny', name: '极小文件', desc: 'CDR 打开最快 · 接受少量简化',

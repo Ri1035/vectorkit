@@ -517,7 +517,7 @@ function ensureClosed(shape, maxGap = 1) {
  * @returns {Promise<{svg:string, stats:Object|null, warnings:string[]}>}
  */
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -744,7 +744,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
       }
 
       // 锚点简化（含可选的边缘平滑）
-      const pruned = pruneAnchors(acc, tolerance, edgeSmooth);
+      const pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK);
       anchorsPruned += pruned;
 
       const node = acc.exportSVG({ precision: 2, asString: false });
@@ -783,7 +783,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         if (doFilter && maxSubpathArea(p) < minArea) { drops.add(c); continue; }
 
         if (edgeSmooth > 0) {
-          const changed = pruneAnchors(p, tolerance, edgeSmooth);
+          const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK);
           anchorsPruned += changed;
           // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
           if (changed > 0) {
@@ -1103,7 +1103,7 @@ function flattenNearStraightCurves(p, tol) {
  * 而描摹输出的曲线路径不含折线区间，导致简化完全不起作用。
  * 形状偏差由容差控制；档位 ≥2 时重建后再做浅转角曲线化，避免变成多边形。
  */
-function resampleSimplify(p, tol, smoothLevel) {
+function resampleSimplify(p, tol, smoothLevel, fitK = 0) {
   const segs = p.segments;
   const n = segs.length;
   if (n < 4) return 0;
@@ -1131,7 +1131,7 @@ function resampleSimplify(p, tol, smoothLevel) {
   for (const q of kept) p.add(new Point(q.x, q.y));
   p.closed = true;
 
-  if (smoothLevel >= 2) fitSmoothCurve(p, FIT_LEVELS[smoothLevel]);
+  if (smoothLevel >= 2) fitSmoothCurve(p, { ...FIT_LEVELS[smoothLevel], k: fitK > 0 ? fitK : FIT_LEVELS[smoothLevel].k });
   return n - kept.length;
 }
 
@@ -1142,7 +1142,7 @@ function resampleSimplify(p, tol, smoothLevel) {
  *     平滑档位 ≥ 2 时改为「重采样 + D-P + 浅转角曲线化」（对曲线路径真正生效）
  * @returns {number} 移除／改动的锚点总数
  */
-function pruneAnchors(item, tol, smoothLevel = 0) {
+function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0) {
   let count = 0;
   const children = item.className === 'CompoundPath' ? item.children.slice() : [item];
 
@@ -1168,7 +1168,7 @@ function pruneAnchors(item, tol, smoothLevel = 0) {
       }
     } else if (smoothLevel >= 2) {
       // 曲线路径：重采样简化（真正减少节点）
-      count += resampleSimplify(p, tol, smoothLevel);
+      count += resampleSimplify(p, tol, smoothLevel, fitK);
     } else {
       // 曲线路径（保守档）：先把近直线曲线段转直，再对折线区间做 D-P
       count += flattenNearStraightCurves(p, tol);
