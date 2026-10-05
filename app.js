@@ -996,6 +996,12 @@ const TEMPLATES = [
     post: { merge: true, tol: 200, frag: true, fragTol: 6, edge: 3 }
   },
   {
+    id: 'artwork', name: '插画精细', desc: '自研 · 圆形物体完美还原 + 细节保留',
+    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
+    post: { merge: true, tol: 150, frag: true, fragTol: 6, edge: 3 }
+  },
+  {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
     params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
@@ -1192,7 +1198,7 @@ function recommendFromAnalysis(a) {
     return { tplId: 'photo', reason: '连续色调图像——走照片预设并限制 48 色，抑制色块数量的同时保留渐变层次。' };
   }
   if (a.type === 'blend') {
-    return { tplId: 'smooth', reason: '检测到抗锯齿混合边缘——「平滑增强」的全曲线拟合 + 上采样能最精确地还原轮廓。' };
+    return { tplId: 'artwork', reason: '检测到抗锯齿混合边缘——「插画精细」的全曲线拟合 + 圆形基元拟合 + 上采样能最精确地还原轮廓。' };
   }
   if (a.type === 'line') {
     return { tplId: 'line', reason: '极少色数的线条图形——黑白描摹模式最干净。' };

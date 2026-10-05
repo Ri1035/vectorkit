@@ -1136,13 +1136,96 @@ function resampleSimplify(p, tol, smoothLevel, fitK = 0) {
 }
 
 /**
+ * 几何基元拟合：把「近似圆」的闭合路径替换为标准圆（4 段三次贝塞尔）。
+ *
+ * 动机：描摹引擎对圆形（眼球、腮红、按钮等）的输出是 N 段折线/短曲线拼接，
+ * 放大后呈多边形锯齿；后处理参数（容差/拟合强度）无法根治。
+ * 用最小二乘圆拟合判定「够不够圆」（RMS 半径偏差 / 半径 ≤ tolRatio），
+ * 够圆就重建为标准圆——节点数降到 4，边缘数学上完美平滑。
+ *
+ * @param {paper.Path} p
+ * @param {number} tolRatio 允许的半径相对偏差（0.02 = 2%）
+ * @returns {number} 减少的锚点数（未拟合返回 0）
+ */
+function fitCircleShapes(p, tolRatio = 0.02) {
+  const segs = p.segments;
+  const n = segs.length;
+  /* 只处理「简单路径」：节点少的形状才可能是圆（眼球/腮红/高光）；
+     节点多的复杂轮廓（头发、脸部外形）若被强制圆化会改变形状 */
+  if (!p.closed || n < 8 || n > 60) return 0;
+
+  /* 沿路径采样（曲线段也采），用于判定圆度 */
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = segs[i];
+    const b = segs[(i + 1) % n];
+    const p0 = { x: a.point.x, y: a.point.y };
+    const p1 = { x: a.point.x + a.handleOut.x, y: a.point.y + a.handleOut.y };
+    const p2 = { x: b.point.x + b.handleIn.x, y: b.point.y + b.handleIn.y };
+    const p3 = { x: b.point.x, y: b.point.y };
+    const SPD = 4;
+    for (let k = 0; k < SPD; k++) pts.push(cubicAt(p0, p1, p2, p3, k / SPD));
+  }
+  if (pts.length < 12) return 0;
+
+  /* 最小二乘圆拟合（Kåsa 线性法） */
+  let mx = 0, my = 0;
+  for (const q of pts) { mx += q.x; my += q.y; }
+  mx /= pts.length; my /= pts.length;
+  let suu = 0, svv = 0, suv = 0, suuu = 0, svvv = 0, suvv = 0, svuu = 0;
+  for (const q of pts) {
+    const u = q.x - mx, v = q.y - my;
+    suu += u * u; svv += v * v; suv += u * v;
+    suuu += u * u * u; svvv += v * v * v; suvv += u * v * v; svuu += v * u * u;
+  }
+  const det = suu * svv - suv * suv;
+  if (Math.abs(det) < 1e-9) return 0;
+  const uc = (svv * (suuu + suvv) - suv * (svvv + svuu)) / (2 * det);
+  const vc = (suu * (svvv + svuu) - suv * (suuu + suvv)) / (2 * det);
+  const cx = uc + mx, cy = vc + my;
+
+  let rSum = 0;
+  for (const q of pts) rSum += Math.hypot(q.x - cx, q.y - cy);
+  const r = rSum / pts.length;
+  if (r < 2) return 0;                     // 太小不处理（噪点级）
+  let devSum = 0;
+  for (const q of pts) {
+    const d = Math.hypot(q.x - cx, q.y - cy) - r;
+    devSum += d * d;
+  }
+  const rms = Math.sqrt(devSum / pts.length);
+  if (rms / r > tolRatio) return 0;        // 不够圆 → 不动
+
+  /* 重建为标准圆：4 点，每点带切线句柄（k = 0.5523 的圆弧近似） */
+  const Pt = p.segments[0].point.constructor;
+  const Seg = p.segments[0].constructor;
+  const K = 0.5522847498;
+  const h = r * K;
+  const ring = [
+    { p: [cx + r, cy], in: [0, -h], out: [0, h] },
+    { p: [cx, cy + r], in: [h, 0], out: [-h, 0] },
+    { p: [cx - r, cy], in: [0, h], out: [0, -h] },
+    { p: [cx, cy - r], in: [-h, 0], out: [h, 0] }
+  ];
+  p.removeSegments();
+  for (const seg of ring) {
+    const s = new Seg(new Pt(seg.p[0], seg.p[1]));
+    s.handleIn = new Pt(seg.in[0], seg.in[1]);
+    s.handleOut = new Pt(seg.out[0], seg.out[1]);
+    p.add(s);
+  }
+  p.closed = true;
+  return n - 4;
+}
+
+/**
  * 锚点精简与边缘平滑：
  *   - 全直线子路径 → 整环 Douglas-Peucker（偏差 ≤ tol）
  *   - 含曲线子路径 → 近直线曲线段转直 + 折线区间 D-P；
- *     平滑档位 ≥ 2 时改为「重采样 + D-P + 浅转角曲线化」（对曲线路径真正生效）
+ *     平滑档位 ≥ 2 时改为「重采样 + D-P + 全曲线拟合」，并尝试几何基元拟合（近似圆 → 标准圆）
  * @returns {number} 移除／改动的锚点总数
  */
-function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0) {
+function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02) {
   let count = 0;
   const children = item.className === 'CompoundPath' ? item.children.slice() : [item];
 
@@ -1169,6 +1252,9 @@ function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0) {
     } else if (smoothLevel >= 2) {
       // 曲线路径：重采样简化（真正减少节点）
       count += resampleSimplify(p, tol, smoothLevel, fitK);
+      /* 几何基元拟合：近似圆 → 标准圆（节点降到 4，边缘完美平滑） */
+      const circleCut = fitCircleShapes(p, circleTol);
+      if (circleCut > 0) count += circleCut;
     } else {
       // 曲线路径（保守档）：先把近直线曲线段转直，再对折线区间做 D-P
       count += flattenNearStraightCurves(p, tol);
