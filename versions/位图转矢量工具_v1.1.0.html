@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>位图转矢量工具</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232456E6'/%3E%3Cpath d='M6 22c4-2 5-14 10-14s3 12 10 10' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='24' cy='8' r='2.6' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#F2F4F7; --panel:#FFFFFF; --ink:#171B22; --muted:#5C6570;
+    --line:#DDE2E8; --line-soft:#ECEEF2; --accent:#2456E6; --accent-weak:#EAF0FF;
+    --ok:#0E9F6E; --err:#C0334D;
+    --shadow:0 1px 2px rgba(20,30,50,.06),0 6px 18px rgba(20,30,50,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    font-size:14px; line-height:1.5;
+  }
+  button{font:inherit;cursor:pointer}
+  select,input{font:inherit;color:inherit}
+
+  /* ===== 顶栏 ===== */
+  header{
+    display:flex; align-items:center; gap:14px;
+    padding:12px 18px; background:var(--panel);
+    border-bottom:1px solid var(--line);
+  }
+  .logo{width:30px;height:30px;flex:none}
+  .brand h1{font-size:16px;font-weight:700;letter-spacing:.2px}
+  .brand p{font-size:12px;color:var(--muted)}
+  .spacer{flex:1}
+  .status{
+    display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted);
+    background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:5px 12px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:#B9C0C9}
+  .dot.ready{background:var(--ok)}
+  .dot.busy{background:#E0A32E}
+  .dot.err{background:var(--err)}
+  .btn{
+    display:inline-flex; align-items:center; gap:7px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    border-radius:8px; padding:7px 14px; font-size:13px; font-weight:600;
+    transition:background .15s,border-color .15s;
+  }
+  .btn:hover{border-color:#B9C3D2;background:#FAFBFC}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#1D47C4;border-color:#1D47C4}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  /* ===== 主区域 ===== */
+  main{display:flex;gap:14px;padding:14px 18px;align-items:flex-start}
+  @media (max-width:860px){main{flex-direction:column}}
+
+  /* ===== 参数面板 ===== */
+  aside{
+    width:300px; flex:none; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; box-shadow:var(--shadow); padding:14px 16px 16px;
+  }
+  @media (max-width:860px){aside{width:100%}}
+  aside h2{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .field{margin-bottom:12px}
+  .field label{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .field .val{font-family:Consolas,"SF Mono",Menlo,monospace;font-size:11px;color:var(--ink)}
+  select,input[type=text]{
+    width:100%; border:1px solid var(--line); border-radius:7px;
+    padding:6px 8px; font-size:13px; background:#fff;
+  }
+  select:focus,input[type=text]:focus{outline:2px solid var(--accent-weak);border-color:var(--accent)}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+  .actions{display:flex;gap:8px;margin-top:4px}
+  .actions .btn{flex:1;justify-content:center;padding:9px 10px}
+  .note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6}
+
+  /* ===== 预览区 ===== */
+  section{flex:1;min-width:0}
+  .preview-toolbar{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:8px 10px;margin-bottom:10px;
+  }
+  .group{display:flex;align-items:center;gap:6px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{
+    border:0;background:var(--panel);padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted);
+  }
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--accent-weak);color:var(--accent)}
+  .seg button:disabled{opacity:.4;cursor:not-allowed}
+  .stat{font-size:12px;color:var(--muted);font-family:Consolas,"SF Mono",Menlo,monospace}
+  .stat b{color:var(--ink);font-weight:700}
+
+  .panes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:1100px){.panes{grid-template-columns:1fr}}
+  .pane{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;
+  }
+  .pane-head{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:8px 12px;border-bottom:1px solid var(--line-soft);font-size:12px;font-weight:700;
+  }
+  .pane-head .tag{color:var(--muted);font-weight:500}
+  .pane-body{
+    position:relative;height:420px;overflow:auto;background:
+      repeating-conic-gradient(#F7F8FA 0% 25%, #fff 0% 50%) 0 0/20px 20px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  @media (max-width:1100px){.pane-body{height:340px}}
+  .pane-body img,.pane-body svg{max-width:100%;max-height:100%;background:#fff}
+  .pane-body.zoomed img,.pane-body.zoomed svg{max-width:none;max-height:none}
+  .pane-body .inner{transform-origin:center center;line-height:0}
+  .empty-hint{color:#9AA3AD;font-size:13px;padding:20px;text-align:center;line-height:2}
+
+  /* ===== 上传区（空态） ===== */
+  .dropzone{
+    background:var(--panel);border:1.5px dashed #B9C3D2;border-radius:14px;
+    padding:46px 24px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--accent-weak)}
+  .dropzone .big{font-size:15px;font-weight:700;margin-top:10px}
+  .dropzone .sub{font-size:12px;color:var(--muted);margin-top:4px}
+  .dropzone .or{font-size:12px;color:var(--muted);margin:12px 0}
+
+  /* ===== toast ===== */
+  #toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99}
+  .toast{
+    background:#1B212B;color:#fff;font-size:13px;border-radius:9px;padding:10px 14px;
+    max-width:340px;box-shadow:0 6px 20px rgba(10,16,30,.25);animation:pop .18s ease-out;
+  }
+  .toast.err{background:var(--err)}
+  @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  /* ===== 编辑器（P2） ===== */
+  .sel-hl{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-dasharray:4 3;pointer-events:none}
+  .ov-handle-line{stroke:#94A3C8;stroke-width:1;stroke-dasharray:3 2;pointer-events:none}
+  .ov-anchor{fill:#fff;stroke:var(--accent);stroke-width:2;pointer-events:all;cursor:move}
+  .ov-handle{fill:#fff;stroke:#94A3C8;stroke-width:1.6;pointer-events:all;cursor:move}
+  #colorRow{display:flex;align-items:center;gap:6px}
+  #colorPicker{width:34px;height:30px;padding:0;border:1px solid var(--line);border-radius:7px;background:none;cursor:pointer}
+  #colorHex{font-family:Consolas,"SF Mono",Menlo,monospace;font-size:11px;color:var(--muted);min-width:66px}
+
+  /* ===== 移动端 ===== */
+  @media (max-width:640px){
+    body{font-size:15px}
+    .btn{min-height:44px}
+    select,input[type=text]{font-size:16px;padding:9px 8px}
+    .field label,.hint,.field .val{font-size:12px}
+    .seg button{min-width:44px;min-height:44px;padding:9px 12px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+    <rect width="32" height="32" rx="7" fill="#2456E6"/>
+    <path d="M6 22c4-2 5-14 10-14s3 12 10 10" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <circle cx="24" cy="8" r="2.6" fill="#fff"/>
+  </svg>
+  <div class="brand">
+    <h1>位图转矢量</h1>
+    <p>Vector Magic 复刻版 · 本地离线 · VTracer 引擎</p>
+  </div>
+  <div class="spacer"></div>
+  <span id="engineStatus" class="status"><span id="engineDot" class="dot"></span><span id="engineText">引擎加载中…</span></span>
+  <button id="btnSample" class="btn">载入示例图</button>
+</header>
+
+<main>
+  <!-- ===== 参数面板 ===== -->
+  <aside>
+    <h2>
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#2456E6" stroke-width="1.6"><path d="M2 11l3.2-3.6 2.4 2L13 4M13 4h-3M13 4v3"/></svg>
+      转换参数
+    </h2>
+
+    <div class="field">
+      <label for="preset">预设 <span class="val" id="presetVal">自动</span></label>
+      <select id="preset">
+        <option value="auto" selected>自动（按图像判断）</option>
+        <option value="bw">黑白线稿（单色）</option>
+        <option value="poster">海报（色块）</option>
+        <option value="photo">照片（多色）</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="mode">拟合模式 <span class="val" id="modeVal">平滑曲线</span></label>
+      <select id="mode">
+        <option value="auto" selected>自动</option>
+        <option value="spline">平滑曲线（默认）</option>
+        <option value="polygon">多边形（直线）</option>
+        <option value="pixel">像素（保留像素感）</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="maxColors">最大颜色数 <span class="val" id="maxColorsVal">自动</span></label>
+      <select id="maxColors">
+        <option value="auto" selected>自动</option>
+        <option value="2">2</option>
+        <option value="4">4</option>
+        <option value="8">8</option>
+        <option value="16">16</option>
+        <option value="32">32</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="filterSpeckle">噪点过滤 <span class="val" id="filterSpeckleVal">4 px</span></label>
+      <input type="range" id="filterSpeckle" min="0" max="32" step="1" value="4">
+      <div class="hint">丢弃小于该面积的杂点区域</div>
+    </div>
+
+    <div class="field">
+      <label for="simplify">曲线简化 <span class="val" id="simplifyVal">关</span></label>
+      <input type="range" id="simplify" min="0" max="2.5" step="0.5" value="0">
+      <div class="hint">容差越大，节点越少、文件越小</div>
+    </div>
+
+    <div class="field">
+      <label for="clustering">聚类方式 <span class="val" id="clusteringVal">色彩聚类</span></label>
+      <select id="clustering">
+        <option value="color-cluster" selected>色彩聚类</option>
+        <option value="bw">黑白阈值</option>
+        <option value="watershed">分水岭</option>
+      </select>
+    </div>
+
+    <div class="field" id="bwField" hidden>
+      <label for="binaryThreshold">黑白阈值 <span class="val" id="binaryThresholdVal">128</span></label>
+      <input type="range" id="binaryThreshold" min="0" max="255" step="1" value="128">
+      <div class="hint">低于阈值的像素算前景</div>
+    </div>
+
+    <div class="field" id="watershedField" hidden>
+      <label for="watershedDetail">分水岭层级 <span class="val" id="watershedDetailVal">128</span></label>
+      <input type="range" id="watershedDetail" min="16" max="512" step="16" value="128">
+      <div class="hint">值越大区域分得越细</div>
+    </div>
+
+    <div class="field">
+      <label for="optimize">输出优化 <span class="val" id="optimizeVal">不优化</span></label>
+      <select id="optimize">
+        <option value="0" selected>不优化</option>
+        <option value="1">精简（量化+清理）</option>
+        <option value="2">最短（合并简写）</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="palette">固定调色板 <span class="val">（可选）</span></label>
+      <input type="text" id="palette" placeholder="#1b1b1b,#e0c088,#5a7d3c" spellcheck="false">
+      <div class="hint">逗号分隔的十六进制色值，输出颜色将被吸附到该调色板</div>
+    </div>
+
+    <div class="actions">
+      <button id="btnConvert" class="btn primary" disabled>开始转换</button>
+    </div>
+    <div class="note" id="paramNote">载入图片后自动转换一次；修改参数后点击「开始转换」重新生成。</div>
+  </aside>
+
+  <!-- ===== 预览区 ===== -->
+  <section id="previewArea" hidden>
+    <div class="preview-toolbar">
+      <span class="stat" id="statPath">路径 <b>–</b></span>
+      <span class="stat" id="statColor">颜色 <b>–</b></span>
+      <span class="stat" id="statSize">SVG <b>–</b></span>
+      <span class="stat" id="statTime">耗时 <b>–</b></span>
+      <div class="seg" id="modeSeg" title="编辑模式">
+        <button data-mode="browse" class="on">浏览</button>
+        <button data-mode="region">改色</button>
+        <button data-mode="bucket">油漆桶</button>
+        <button data-mode="node">节点</button>
+      </div>
+      <span id="colorRow" hidden>
+        <input type="color" id="colorPicker" value="#2456E6" title="改色 / 油漆桶颜色">
+        <span id="colorHex">#2456e6</span>
+      </span>
+      <div class="seg">
+        <button id="btnUndo" disabled>撤销</button>
+        <button id="btnRedo" disabled>重做</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="seg" id="zoomSeg">
+        <button id="zOut" title="缩小">−</button>
+        <button id="zFit" title="适应窗口" class="on">适应</button>
+        <button id="zIn" title="放大">+</button>
+        <button id="zOne" title="100% 原始尺寸">1:1</button>
+      </div>
+      <button id="btnDownload" class="btn primary">下载 SVG</button>
+    </div>
+
+    <div class="panes">
+      <div class="pane">
+        <div class="pane-head">原图 <span class="tag" id="srcName">–</span></div>
+        <div class="pane-body" id="srcBody">
+          <div class="inner" id="srcInner"></div>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head">矢量结果 <span class="tag" id="svgName">–</span></div>
+        <div class="pane-body" id="svgBody">
+          <div class="inner" id="svgInner"><div class="empty-hint">等待转换…</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 空态：上传区 ===== -->
+  <section id="dropSection" style="flex:1;min-width:0">
+    <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="上传图片">
+      <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#5C6570" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <div class="big">拖入 JPG / PNG / BMP / GIF 图片</div>
+      <div class="sub">或点击选择文件 · 图片仅在本机处理，不会上传</div>
+      <div class="or">—— 或者 ——</div>
+      <button class="btn" id="btnPick">选择图片文件</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/bmp,image/gif" class="sr">
+  </section>
+</main>
+
+<div id="toasts"></div>
+
+<!-- ===== 引擎（本地 vendored WASM，离线可用） ===== -->
+<script src="lib/vtracer.js"></script>
+<!-- ===== APP SCRIPT ===== -->
+<script>
+"use strict";
+(function(){
+  // 引擎由 lib/vtracer.js 提供 window.VTracerEngine
+  const $ = id => document.getElementById(id);
+  const state = { imgBytes:null, svg:'', srcName:'', zoom:1, converting:false };
+
+  /* ---------- 引擎状态 ---------- */
+  function engineReady(){ return !!(window.VTracerEngine && window.VTracerEngine.vectorize_bytes); }
+  function refreshEngineStatus(){
+    const dot=$('engineDot'), txt=$('engineText');
+    if(engineReady()){ dot.className='dot ready'; txt.textContent='引擎已就绪 · VTracer 1.0'; }
+    else if(!window.WebAssembly){ dot.className='dot err'; txt.textContent='浏览器不支持 WebAssembly'; }
+    else { dot.className='dot busy'; txt.textContent='引擎加载中…'; }
+  }
+  refreshEngineStatus();
+
+  /* ---------- Toast ---------- */
+  function toast(msg, isErr){
+    const el=document.createElement('div');
+    el.className='toast'+(isErr?' err':'');
+    el.textContent=msg;
+    $('toasts').appendChild(el);
+    setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),320); }, 3600);
+  }
+
+  /* ---------- 参数面板 ---------- */
+  const selects=[
+    ['preset','presetVal',{auto:'自动',bw:'黑白线稿',poster:'海报',photo:'照片'}],
+    ['mode','modeVal',{auto:'自动',spline:'平滑曲线',polygon:'多边形',pixel:'像素'}],
+    ['maxColors','maxColorsVal',{auto:'自动'}],
+    ['clustering','clusteringVal',{'color-cluster':'色彩聚类',bw:'黑白阈值',watershed:'分水岭'}],
+    ['optimize','optimizeVal',{0:'不优化',1:'精简',2:'最短'}]
+  ];
+  selects.forEach(([id,valId,map])=>{
+    const el=$(id);
+    el.addEventListener('change',()=>{
+      const v=el.value;
+      $(valId).textContent = (map[v]!==undefined)?map[v]:v;
+      if(id==='clustering') toggleClusterFields();
+    });
+  });
+  ['filterSpeckle','simplify','binaryThreshold','watershedDetail'].forEach(id=>{
+    $(id).addEventListener('input',()=>{
+      const v=parseFloat($(id).value);
+      if(id==='filterSpeckle') $('filterSpeckleVal').textContent=v+' px';
+      else if(id==='simplify') $('simplifyVal').textContent = v>0? v.toFixed(1)+' px':'关';
+      else if(id==='binaryThreshold') $('binaryThresholdVal').textContent=v;
+      else $('watershedDetailVal').textContent=v;
+    });
+  });
+  function toggleClusterFields(){
+    const c=$('clustering').value;
+    $('bwField').hidden = c!=='bw';
+    $('watershedField').hidden = c!=='watershed';
+  }
+
+  function normalizeHex(s){
+    s=s.trim().replace(/^#/,'');
+    if(!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+    return '#'+s.toLowerCase();
+  }
+  function buildOptions(){
+    const o={};
+    const preset=$('preset').value; if(preset!=='auto') o.preset=preset;
+    const mode=$('mode').value; if(mode!=='auto') o.mode=mode;
+    const mc=$('maxColors').value; if(mc!=='auto') o.maxColors=parseInt(mc,10);
+    const fs=parseInt($('filterSpeckle').value,10); if(fs>0) o.filterSpeckle=fs;
+    const sp=parseFloat($('simplify').value); if(sp>0) o.simplify=sp;
+    const cl=$('clustering').value; if(cl!=='color-cluster') o.clustering=cl;
+    if(cl==='bw') o.binaryThreshold=parseInt($('binaryThreshold').value,10);
+    if(cl==='watershed') o.watershedDetail=parseInt($('watershedDetail').value,10);
+    const opt=$('optimize').value; if(opt!=='0') o.optimize=parseInt(opt,10);
+    const palRaw=$('palette').value;
+    if(palRaw.trim()){
+      const colors=palRaw.split(/[,，\s]+/).filter(Boolean).map(normalizeHex).filter(Boolean);
+      if(colors.length){ o.palette=colors; }
+      else { toast('调色板格式无效：应为 #rrggbb 逗号分隔',true); return null; }
+    }
+    return o;
+  }
+
+  /* ---------- 文件载入 ---------- */
+  const dropzone=$('dropzone'), fileInput=$('fileInput');
+  function loadFile(file){
+    if(!file) return;
+    if(!/^image\/(png|jpeg|bmp|gif)$/.test(file.type)){
+      toast('仅支持 JPG / PNG / BMP / GIF',true); return;
+    }
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const bytes=new Uint8Array(reader.result);
+      state.imgBytes=bytes;
+      state.srcName=file.name;
+      $('srcName').textContent=file.name;
+      $('svgName').textContent=file.name.replace(/\.[^.]+$/,'')+'_矢量.svg';
+      renderSource();
+      $('dropSection').hidden=true;
+      $('previewArea').hidden=false;
+      $('btnConvert').disabled=!engineReady();
+      runConvert();
+    };
+    reader.onerror=()=>toast('读取文件失败',true);
+    reader.readAsArrayBuffer(file);
+  }
+  dropzone.addEventListener('click',()=>fileInput.click());
+  dropzone.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();} });
+  fileInput.addEventListener('change',()=>{ loadFile(fileInput.files[0]); fileInput.value=''; });
+  ['dragover','dragenter'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+  dropzone.addEventListener('drop',e=>{
+    const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(f) loadFile(f); else toast('未检测到文件',true);
+  });
+
+  /* ---------- 示例图（内嵌 base64，file:// 双击可用） ---------- */
+  const SAMPLE_B64='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';
+  function b64ToBytes(b64){
+    const bin=atob(b64); const out=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+    return out;
+  }
+  $('btnSample').addEventListener('click',()=>{
+    state.imgBytes=b64ToBytes(SAMPLE_B64);
+    state.srcName='sample.png';
+    $('srcName').textContent='sample.png';
+    $('svgName').textContent='sample_矢量.svg';
+    renderSource();
+    $('dropSection').hidden=true;
+    $('previewArea').hidden=false;
+    $('btnConvert').disabled=!engineReady();
+    runConvert();
+  });
+
+  /* ---------- 原图渲染 ---------- */
+  function renderSource(){
+    const blob=new Blob([state.imgBytes],{type:'image/png'});
+    const url=URL.createObjectURL(blob);
+    const img=document.createElement('img');
+    img.alt='原图';
+    img.onload=()=>{ URL.revokeObjectURL(url); applyZoom(); };
+    img.src=url;
+    $('srcInner').replaceChildren(img);
+    $('svgInner').innerHTML='<div class="empty-hint">等待转换…</div>';
+  }
+
+  /* ---------- 转换 ---------- */
+  function setBusy(b){
+    state.converting=b;
+    $('btnConvert').disabled=b||!engineReady()||!state.imgBytes;
+    $('engineDot').className='dot '+(b?'busy':'ready');
+    $('engineText').textContent=b?'正在转换…':'引擎已就绪 · VTracer 1.0';
+  }
+  function runConvert(){
+    if(!engineReady()){ toast('引擎尚未就绪',true); return; }
+    if(!state.imgBytes||state.converting) return;
+    const opts=buildOptions();
+    if(!opts) return;
+    setBusy(true);
+    setTimeout(()=>{
+      try{
+        const t0=performance.now();
+        const svg=window.VTracerEngine.vectorize_bytes(state.imgBytes,opts);
+        const t1=performance.now();
+        state.svg=svg;
+        renderVector(svg);
+        const paths=(svg.match(/<path\b/g)||[]).length;
+        const fills=(svg.match(/fill="#([0-9a-fA-F]{6})"/g)||[]);
+        const colors=new Set(fills.map(f=>f.slice(7,-1).toLowerCase())).size;
+        $('statPath').innerHTML='路径 <b>'+paths+'</b>';
+        $('statColor').innerHTML='颜色 <b>'+colors+'</b>';
+        $('statSize').innerHTML='SVG <b>'+(svg.length/1024).toFixed(1)+' KB</b>';
+        $('statTime').innerHTML='耗时 <b>'+(t1-t0).toFixed(0)+' ms</b>';
+      }catch(e){
+        console.error(e);
+        toast('转换失败：'+(e&&e.message?e.message:'未知错误'),true);
+      }finally{
+        setBusy(false);
+      }
+    },30);
+  }
+  $('btnConvert').addEventListener('click',runConvert);
+
+  function renderVector(svg){
+    const holder=$('svgInner');
+    holder.innerHTML=svg;
+    Editor.resetAfterConvert();
+    applyZoom();
+  }
+
+  /* ---------- 缩放 ---------- */
+  let zoomLevel=0; // 0=适应
+  const zoomPresets=[0.25,0.5,0.75,1,1.5,2,3];
+  function applyZoom(){
+    const body1=$('srcBody'),body2=$('svgBody');
+    const inner1=$('srcInner'),inner2=$('svgInner');
+    if(zoomLevel===0){
+      body1.classList.remove('zoomed'); body2.classList.remove('zoomed');
+      inner1.style.transform=''; inner2.style.transform='';
+    }else{
+      body1.classList.add('zoomed'); body2.classList.add('zoomed');
+      const s=zoomPresets[zoomLevel];
+      inner1.style.transform='scale('+s+')'; inner2.style.transform='scale('+s+')';
+    }
+    syncZoomButtons();
+  }
+  function syncZoomButtons(){
+    ['zFit','zOut','zIn','zOne'].forEach(id=>$(id).classList.remove('on'));
+    const map={0:'zFit'};
+    if(zoomLevel===0) $('zFit').classList.add('on');
+    else if(zoomLevel===3) $('zOne').classList.add('on');
+    $('zIn').disabled=zoomLevel>=zoomPresets.length-1;
+    $('zOut').disabled=false;
+  }
+  $('zFit').addEventListener('click',()=>{zoomLevel=0;applyZoom();});
+  $('zOne').addEventListener('click',()=>{zoomLevel=3;applyZoom();});
+  $('zIn').addEventListener('click',()=>{ if(zoomLevel<zoomPresets.length-1){zoomLevel++;applyZoom();} });
+  $('zOut').addEventListener('click',()=>{ if(zoomLevel>0){zoomLevel--;applyZoom();} });
+
+  /* ---------- 下载 ---------- */
+  $('btnDownload').addEventListener('click',()=>{
+    if(!state.svg){ toast('还没有可下载的矢量结果',true); return; }
+    const blob=new Blob([state.svg],{type:'image/svg+xml'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=state.srcName.replace(/\.[^.]+$/,'')+'_矢量.svg';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),3000);
+  });
+
+  /* ================= 编辑器（P2）：区域改色 / 油漆桶 / 节点拖拽 / 撤销重做 ================= */
+  const NS='http://www.w3.org/2000/svg';
+  const Editor={
+    mode:'browse', sel:-1, bucket:'#2456E6',
+    paths:[], history:[], histIdx:-1, drag:null,
+
+    svgRoot(){ return $('svgInner').querySelector('svg'); },
+
+    /* ---- 路径解析 ---- */
+    parseD(d){
+      const toks=d.match(/[MLCmlcZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g);
+      if(!toks) return null;
+      const segs=[]; let i=0,x=0,y=0,cmd=null;
+      const next=()=>{ if(i<toks.length){ const v=parseFloat(toks[i]); if(!isNaN(v)){ i++; return v; } } return NaN; };
+      while(i<toks.length){
+        const t=toks[i];
+        if(/[a-zA-Z]/.test(t)){ cmd=t; i++; continue; }
+        if(cmd===null) return null;
+        if(cmd==='z'||cmd==='Z'){ segs.push({cmd:'Z',pts:[]}); cmd=null; continue; }
+        if(cmd==='m'||cmd==='M'){ const nx=next(),ny=next(); if(isNaN(nx)||isNaN(ny)) return null; let px=nx,py=ny; if(cmd==='m'){px+=x;py+=y;} x=px;y=py; segs.push({cmd:'M',pts:[[x,y]]}); cmd=null; continue; }
+        if(cmd==='l'||cmd==='L'){ const nx=next(),ny=next(); if(isNaN(nx)||isNaN(ny)) return null; let px=nx,py=ny; if(cmd==='l'){px+=x;py+=y;} x=px;y=py; segs.push({cmd:'L',pts:[[x,y]]}); cmd=null; continue; }
+        if(cmd==='c'||cmd==='C'){
+          const s={cmd:'C',pts:[]};
+          for(let k=0;k<3;k++){ const nx=next(),ny=next(); if(isNaN(nx)||isNaN(ny)) return null; let px=nx,py=ny; if(cmd==='c'){px+=x;py+=y;} s.pts.push([px,py]); x=px;y=py; }
+          segs.push(s); cmd=null; continue;
+        }
+        return null;
+      }
+      return segs.length?segs:null;
+    },
+    serializeD(segs){
+      const r=v=>Math.round(v*100)/100;
+      let s='';
+      for(const sg of segs){
+        if(sg.cmd==='M') s+='M'+r(sg.pts[0][0])+','+r(sg.pts[0][1]);
+        else if(sg.cmd==='L') s+='L'+r(sg.pts[0][0])+','+r(sg.pts[0][1]);
+        else if(sg.cmd==='C') s+='C'+r(sg.pts[0][0])+','+r(sg.pts[0][1])+' '+r(sg.pts[1][0])+','+r(sg.pts[1][1])+' '+r(sg.pts[2][0])+','+r(sg.pts[2][1]);
+        else if(sg.cmd==='Z') s+='Z';
+      }
+      return s;
+    },
+
+    /* ---- 模型重建 ---- */
+    buildPaths(){
+      this.paths=[];
+      const svg=this.svgRoot(); if(!svg) return;
+      const els=svg.querySelectorAll('path');
+      for(let i=0;i<els.length;i++){
+        const el=els[i];
+        this.paths.push({el, fill:el.getAttribute('fill')||'#000000', d:el.getAttribute('d')||'', segs:this.parseD(el.getAttribute('d')||'')});
+      }
+    },
+    resetAfterConvert(){
+      this.buildPaths(); this.sel=-1; this.history=[]; this.histIdx=-1;
+      this.renderOverlay(); this.syncHistoryBtns();
+    },
+
+    /* ---- 坐标换算（兼容缩放/滚动） ---- */
+    svgPoint(e){
+      const svg=this.svgRoot(); if(!svg||!svg.createSVGPoint) return null;
+      const pt=svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY;
+      const ctm=svg.getScreenCTM(); if(!ctm) return null;
+      const p=pt.matrixTransform(ctm.inverse()); return {x:p.x,y:p.y};
+    },
+
+    /* ---- 叠加层：高亮 + 锚点/手柄 ---- */
+    renderOverlay(){
+      const svg=this.svgRoot(); if(!svg) return;
+      const old=svg.querySelector('#editOverlay'); if(old) old.remove();
+      const g=document.createElementNS(NS,'g'); g.id='editOverlay'; g.setAttribute('pointer-events','none');
+      const p=this.paths[this.sel];
+      if(p){
+        if(p.d){ const hl=document.createElementNS(NS,'path'); hl.setAttribute('class','sel-hl'); hl.setAttribute('d',p.d); g.appendChild(hl); }
+        if(p.segs){
+          const addLine=(a,b)=>{ const l=document.createElementNS(NS,'line'); l.setAttribute('class','ov-handle-line'); l.setAttribute('x1',a[0]); l.setAttribute('y1',a[1]); l.setAttribute('x2',b[0]); l.setAttribute('y2',b[1]); g.appendChild(l); };
+          const addCircle=(si,pi,pt,r,cls)=>{ const c=document.createElementNS(NS,'circle'); c.setAttribute('class',cls); c.setAttribute('cx',pt[0]); c.setAttribute('cy',pt[1]); c.setAttribute('r',r); c.setAttribute('pointer-events','all'); c.dataset.si=si; c.dataset.pi=pi; c.setAttribute('role','editor-node'); g.appendChild(c); };
+          let prevPt=null;
+          p.segs.forEach((sg,si)=>{
+            if(sg.cmd==='M'){ prevPt=sg.pts[0]; addCircle(si,0,sg.pts[0],4.5,'ov-anchor'); }
+            else if(sg.cmd==='C'){
+              addLine(prevPt,sg.pts[0]); addLine(sg.pts[1],sg.pts[2]);
+              addCircle(si,0,sg.pts[0],3.2,'ov-handle');
+              addCircle(si,1,sg.pts[1],3.2,'ov-handle');
+              addCircle(si,2,sg.pts[2],4.5,'ov-anchor');
+              prevPt=sg.pts[2];
+            }
+            else if(sg.cmd==='L'){ addCircle(si,0,sg.pts[0],4.5,'ov-anchor'); prevPt=sg.pts[0]; }
+          });
+        }
+      }
+      svg.appendChild(g);
+    },
+
+    /* ---- 选中 ---- */
+    selectIndex(i){
+      this.sel=i; this.renderOverlay();
+      const p=this.paths[i];
+      if(p && (this.mode==='region'||this.mode==='node')){
+        const col=p.fill;
+        if(/^#[0-9a-fA-F]{6}$/.test(col)){ $('colorPicker').value=col.toLowerCase(); $('colorHex').textContent=col.toLowerCase(); }
+      }
+    },
+    pickAt(e){
+      const els=document.elementsFromPoint(e.clientX,e.clientY);
+      for(const el of els){
+        if(el.tagName==='path' && !el.classList.contains('sel-hl') && $('svgInner').contains(el)){
+          for(let i=0;i<this.paths.length;i++){ if(this.paths[i].el===el) return i; }
+        }
+      }
+      return -1;
+    },
+
+    /* ---- 撤销/重做（快照式） ---- */
+    snapshot(){
+      const svg=this.svgRoot(); if(!svg) return null;
+      const cl=svg.cloneNode(true);
+      const ov=cl.querySelector('#editOverlay'); if(ov) ov.remove();
+      return cl.outerHTML;
+    },
+    pushHistory(){
+      const s=this.snapshot(); if(!s) return;
+      this.history=this.history.slice(0,this.histIdx+1);
+      this.history.push(s);
+      if(this.history.length>50) this.history.shift();
+      this.histIdx=this.history.length-1;
+      this.syncHistoryBtns();
+    },
+    restore(i){
+      if(i<0||i>=this.history.length) return;
+      $('svgInner').innerHTML=this.history[i];
+      this.buildPaths(); this.sel=-1; this.renderOverlay();
+      this.histIdx=i; this.syncHistoryBtns();
+    },
+    undo(){ this.restore(this.histIdx-1); },
+    redo(){ this.restore(this.histIdx+1); },
+    syncHistoryBtns(){
+      $('btnUndo').disabled=this.histIdx<=0;
+      $('btnRedo').disabled=this.histIdx>=this.history.length-1;
+    },
+
+    /* ---- 应用路径修改 ---- */
+    applyPath(p){
+      const d=this.serializeD(p.segs); p.d=d; p.el.setAttribute('d',d);
+      if(this.drag){
+        const g=this.svgRoot().querySelector('#editOverlay');
+        if(g){
+          const c=g.querySelector('circle[data-si="'+this.drag.si+'"][data-pi="'+this.drag.pi+'"]');
+          if(c){ const pt=p.segs[this.drag.si].pts[this.drag.pi]; c.setAttribute('cx',pt[0]); c.setAttribute('cy',pt[1]); }
+          const hl=g.querySelector('.sel-hl'); if(hl) hl.setAttribute('d',d);
+          this.syncLines(g,p);
+        }
+      } else { this.renderOverlay(); }
+    },
+    syncLines(g,p){
+      let prevPt=null, li=0;
+      const lines=g.querySelectorAll('line.ov-handle-line');
+      for(const sg of p.segs){
+        if(sg.cmd==='M') prevPt=sg.pts[0];
+        else if(sg.cmd==='C'){
+          if(lines[li]){ lines[li].setAttribute('x1',prevPt[0]); lines[li].setAttribute('y1',prevPt[1]); lines[li].setAttribute('x2',sg.pts[0][0]); lines[li].setAttribute('y2',sg.pts[0][1]); }
+          li++;
+          if(lines[li]){ lines[li].setAttribute('x1',sg.pts[1][0]); lines[li].setAttribute('y1',sg.pts[1][1]); lines[li].setAttribute('x2',sg.pts[2][0]); lines[li].setAttribute('y2',sg.pts[2][1]); }
+          li++;
+          prevPt=sg.pts[2];
+        }
+        else if(sg.cmd==='L') prevPt=sg.pts[0];
+      }
+    },
+
+    /* ---- 模式切换 ---- */
+    setMode(m){
+      this.mode=m;
+      document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+      $('colorRow').hidden = !(m==='region'||m==='bucket');
+      if(m==='browse'){ this.sel=-1; this.renderOverlay(); }
+      if(m==='node'&&this.paths.length&&this.sel<0) toast('点击矢量区域可选中，再拖拽锚点/手柄调整曲线');
+      if(m==='region'&&this.sel>=0){ const p=this.paths[this.sel]; if(p&&/^#[0-9a-fA-F]{6}$/.test(p.fill)){ $('colorPicker').value=p.fill.toLowerCase(); $('colorHex').textContent=p.fill.toLowerCase(); } }
+    }
+  };
+
+  /* 事件绑定（一次） */
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.addEventListener('click',()=>Editor.setMode(b.dataset.mode)));
+  $('colorPicker').addEventListener('change',()=>{
+    const v=$('colorPicker').value.toLowerCase();
+    $('colorHex').textContent=v;
+    Editor.bucket=v;
+    if(Editor.mode==='region'&&Editor.sel>=0){
+      const p=Editor.paths[Editor.sel];
+      if(p){ Editor.pushHistory(); p.fill=v; p.el.setAttribute('fill',v); }
+    }
+  });
+  $('btnUndo').addEventListener('click',()=>Editor.undo());
+  $('btnRedo').addEventListener('click',()=>Editor.redo());
+
+  $('svgInner').addEventListener('click',e=>{
+    if(Editor.mode==='browse') return;
+    const t=e.target;
+    if(t&&t.closest&&t.closest('#editOverlay')) return;
+    const idx=Editor.pickAt(e);
+    if(idx<0){ if(Editor.mode==='node'||Editor.mode==='region'){} return; }
+    if(Editor.mode==='bucket'){ Editor.pushHistory(); const p=Editor.paths[idx]; p.fill=Editor.bucket; p.el.setAttribute('fill',Editor.bucket); }
+    else { Editor.selectIndex(idx); }
+  });
+  $('svgInner').addEventListener('pointerdown',e=>{
+    if(Editor.mode!=='node') return;
+    const t=e.target;
+    if(!t||!t.classList||!(t.classList.contains('ov-anchor')||t.classList.contains('ov-handle'))) return;
+    const si=parseInt(t.dataset.si,10), pi=parseInt(t.dataset.pi,10);
+    const p=Editor.paths[Editor.sel];
+    if(!p||!p.segs||!p.segs[si]) return;
+    Editor.drag={si,pi,startX:e.clientX,startY:e.clientY,moved:false};
+    Editor.pushHistory();
+    if(t.setPointerCapture) t.setPointerCapture(e.pointerId);
+    e.preventDefault(); e.stopPropagation();
+  });
+  $('svgInner').addEventListener('pointermove',e=>{
+    if(!Editor.drag) return;
+    const p=Editor.paths[Editor.sel]; if(!p||!p.segs) return;
+    const pt=Editor.svgPoint(e); if(!pt) return;
+    const d=Editor.drag;
+    if(Math.abs(e.clientX-d.startX)>2||Math.abs(e.clientY-d.startY)>2) d.moved=true;
+    p.segs[d.si].pts[d.pi]=[pt.x,pt.y];
+    Editor.applyPath(p);
+  });
+  ['pointerup','pointercancel'].forEach(ev=>$('svgInner').addEventListener(ev,()=>{ Editor.drag=null; }));
+
+  window.__editor=Editor; // 供自动验证使用的调试钩子
+
+  /* 初始状态 */
+  $('btnConvert').disabled=true;
+})();
+</script>
+</body>
+</html>

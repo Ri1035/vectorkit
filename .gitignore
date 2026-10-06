@@ -1,0 +1,11 @@
+﻿# 自检截图与临时产物
+_shots/
+_backup/
+*.tmp
+
+# 部署构建产物（不入库）
+deploy/
+
+# Python
+__pycache__/
+*.pyc
