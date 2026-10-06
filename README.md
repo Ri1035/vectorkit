@@ -37,12 +37,12 @@
 
 ```
 bitmap2vector/
-├── 位图转矢量工具.html     # 主程序（单文件自包含，当前版本 v1.3.0）
+├── 位图转矢量工具.html     # 主程序（单文件自包含，当前版本 v1.4.0）
 ├── lib/
 │   ├── vtracer.js          # 浏览器版 VTracer 引擎（wasm 内嵌 base64）
 │   ├── _vtracer_wasm.js    # 官方 Node 胶水原始备份（构建输入）
 │   └── _vtracer_wasm_bg.wasm # 官方 wasm 本体备份（构建输入）
-├── versions/               # 版本快照（v1.0.0 ~ v1.3.0，可回滚）
+├── versions/               # 版本快照（v1.0.0 ~ v1.4.0，可回滚）
 │   └── 位图转矢量工具_vX.Y.Z.html
 ├── build_vtracer_lib.py    # 引擎构建脚本（Node 胶水 → 浏览器版）
 ├── CHANGELOG.md            # 版本变更记录
@@ -85,6 +85,7 @@ npx wrangler pages deploy deploy --project-name vector-db --branch main
 | v1.1.0 | 2026-10-04 | P2 编辑器：改色 / 油漆桶 / 节点拖拽 / 撤销重做 |
 | v1.2.0 | 2026-10-04 | 质量档位 + 2× 超采样（等效亚像素精度） |
 | v1.3.0 | 2026-10-06 | EPS 导出 + CMYK 颜色 + GitHub/CF 发布 |
+| v1.4.0 | 2026-10-06 | **质量修复**：引擎参数字段改 snake_case（修复参数从未生效的 bug），多色图颜色保留与分块质量大幅提升 |
 
 完整变更与验证细节见 [CHANGELOG.md](CHANGELOG.md)。
 

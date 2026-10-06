@@ -169,7 +169,7 @@
   </svg>
   <div class="brand">
     <h1>位图转矢量</h1>
-    <p>Vector Magic 复刻版 · 本地离线 · VTracer 引擎 · v1.3.0</p>
+    <p>Vector Magic 复刻版 · 本地离线 · VTracer 引擎 · v1.4.0</p>
   </div>
   <div class="spacer"></div>
   <span id="engineStatus" class="status"><span id="engineDot" class="dot"></span><span id="engineText">引擎加载中…</span></span>
@@ -414,9 +414,9 @@
 
   /* ---------- 质量档位（宏：联动滑块 + 超采样倍数 + 输出精度） ---------- */
   const QUALITY={
-    fast:{speckle:8, simplify:1.5, optimize:'2', precision:16, scale:1,   label:'快速'},
-    std: {speckle:4, simplify:0.75,optimize:'1', precision:8,  scale:1.5, label:'标准'},
-    high:{speckle:2, simplify:0.25,optimize:'0', precision:4,  scale:2,   label:'高质量'}
+    fast:{speckle:4, simplify:1.5, optimize:'2', precision:8,  scale:1,   label:'快速'},
+    std: {speckle:1, simplify:0.75,optimize:'1', precision:4,  scale:1.5, label:'标准'},
+    high:{speckle:0, simplify:0.25,optimize:'0', precision:2,  scale:2,   label:'高质量'}
   };
   function applyQuality(q){
     state.quality=q;
@@ -439,18 +439,18 @@
     return '#'+s.toLowerCase();
   }
   function buildOptions(){
-    const o={};
+    const o={hierarchical:'cutout'}; // 挖洞式分块：每色独立、无叠层，输出干净
     const preset=$('preset').value; if(preset!=='auto') o.preset=preset;
     const mode=$('mode').value; if(mode!=='auto') o.mode=mode;
-    const mc=$('maxColors').value; if(mc!=='auto') o.maxColors=parseInt(mc,10);
-    const fs=parseInt($('filterSpeckle').value,10); if(fs>0) o.filterSpeckle=fs;
+    const mc=$('maxColors').value; if(mc!=='auto') o.max_colors=parseInt(mc,10);
+    const fs=parseInt($('filterSpeckle').value,10); if(fs>0) o.filter_speckle=fs;
     const sp=parseFloat($('simplify').value); if(sp>0) o.simplify=sp;
     const cl=$('clustering').value; if(cl!=='color-cluster') o.clustering=cl;
-    if(cl==='bw') o.binaryThreshold=parseInt($('binaryThreshold').value,10);
-    if(cl==='watershed') o.watershedDetail=parseInt($('watershedDetail').value,10);
+    if(cl==='bw') o.binary_threshold=parseInt($('binaryThreshold').value,10);
+    if(cl==='watershed') o.watershed_detail=parseInt($('watershedDetail').value,10);
     const opt=$('optimize').value; if(opt!=='0') o.optimize=parseInt(opt,10);
-    o.colorPrecision=(QUALITY[state.quality]||QUALITY.high).precision;
-    o.pathPrecision=1;
+    o.color_precision=(QUALITY[state.quality]||QUALITY.high).precision;
+    o.path_precision=1;
     const palRaw=$('palette').value;
     if(palRaw.trim()){
       const colors=palRaw.split(/[,，\s]+/).filter(Boolean).map(normalizeHex).filter(Boolean);
