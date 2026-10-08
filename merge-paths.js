@@ -517,7 +517,7 @@ function ensureClosed(shape, maxGap = 1) {
  * @returns {Promise<{svg:string, stats:Object|null, warnings:string[]}>}
  */
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -744,7 +744,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
       }
 
       // 锚点简化（含可选的边缘平滑）
-      const pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK, circleTol, alignTol);
+      const pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol);
       anchorsPruned += pruned;
 
       const node = acc.exportSVG({ precision: 2, asString: false });
@@ -783,7 +783,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         if (doFilter && maxSubpathArea(p) < minArea) { drops.add(c); continue; }
 
         if (edgeSmooth > 0) {
-          const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol);
+          const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol);
           anchorsPruned += changed;
           // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
           if (changed > 0) {
@@ -1067,8 +1067,109 @@ export function restoreLostDetails(svgText, imgData, opts = {}) {
   return added ? new XMLSerializer().serializeToString(svg) : svgText;
 }
 
+
+/**
+ * 轴对齐椭圆拟合：把「近似轴对齐椭圆」的闭合路径替换为标准椭圆。
+ *
+ * 与 fitCircleShapes 的关系：圆拟合先试；不成圆但**轴对齐**（蘑菇帽、兔耳、
+ * 白点、腮红等设计元素常见）的路径用本函数处理。
+ * 判据：以路径 bbox 中心为椭圆心，采样点到椭圆的归一化偏差 RMS ≤ tolRatio。
+ *
+ * @param {paper.Path} p
+ * @param {number} tolRatio 允许的相对偏差（0.08 = 8%）
+ * @returns {number} 减少的锚点数
+ */
+function fitAxisAlignedEllipse(p, tolRatio = 0.08) {
+  const segs = p.segments;
+  const n = segs.length;
+  if (!p.closed || n < 4 || n > 60) return 0;
+
+  /* 采样 */
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = segs[i];
+    const b = segs[(i + 1) % n];
+    const p0 = { x: a.point.x, y: a.point.y };
+    const p1 = { x: a.point.x + a.handleOut.x, y: a.point.y + a.handleOut.y };
+    const p2 = { x: b.point.x + b.handleIn.x, y: b.point.y + b.handleIn.y };
+    const p3 = { x: b.point.x, y: b.point.y };
+    const SPD = 4;
+    for (let k = 0; k < SPD; k++) pts.push(cubicAt(p0, p1, p2, p3, k / SPD));
+  }
+  if (pts.length < 12) return 0;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const q of pts) {
+    if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+    if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y;
+  }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const rx = (maxX - minX) / 2, ry = (maxY - minY) / 2;
+  if (rx < 2 || ry < 2) return 0;
+  /* 过扁的元素不处理（可能是弧线或误检） */
+  const ratio = Math.max(rx, ry) / Math.min(rx, ry);
+  if (ratio > 4) return 0;
+
+  /* 归一化径向偏差（椭圆：((x-cx)/rx)² + ((y-cy)/ry)² = 1） */
+  let devSum = 0;
+  for (const q of pts) {
+    const u = (q.x - cx) / rx, v = (q.y - cy) / ry;
+    const d = Math.sqrt(u * u + v * v) - 1;
+    devSum += d * d;
+  }
+  const rms = Math.sqrt(devSum / pts.length);
+  if (rms > tolRatio) return 0;
+
+  /* 重建为标准椭圆（4 段贝塞尔） */
+  const Pt = p.segments[0].point.constructor;
+  const Seg = p.segments[0].constructor;
+  const K = 0.5522847498;
+  const hx = rx * K, hy = ry * K;
+  const ring = [
+    { p: [cx + rx, cy], in: [0, -hy], out: [0, hy] },
+    { p: [cx, cy + ry], in: [hx, 0], out: [-hx, 0] },
+    { p: [cx - rx, cy], in: [0, hy], out: [0, -hy] },
+    { p: [cx, cy - ry], in: [-hx, 0], out: [hx, 0] }
+  ];
+  p.removeSegments();
+  for (const s of ring) {
+    const seg = new Seg(new Pt(s.p[0], s.p[1]));
+    seg.handleIn = new Pt(s.in[0], s.in[1]);
+    seg.handleOut = new Pt(s.out[0], s.out[1]);
+    p.add(seg);
+  }
+  p.closed = true;
+  return n - 4;
+}
+
+/**
+ * 等半径统一：把图中「尺寸相近的圆/椭圆」统一到同一半径，还原设计意图
+ * （设计稿里成组的圆点、圆角通常用同一尺寸）。
+ * @param {number[][]} shapes [[r1],[r2],...] 已拟合形状的半径列表（就地修改）
+ * @returns {number} 被统一的数量
+ */
+function unifyEqualRadii(shapes, tolRatio = 0.15) {
+  let unified = 0;
+  const used = new Array(shapes.length).fill(false);
+  for (let i = 0; i < shapes.length; i++) {
+    if (used[i]) continue;
+    const group = [i];
+    for (let j = i + 1; j < shapes.length; j++) {
+      if (used[j]) continue;
+      const a = shapes[i][0], b = shapes[j][0];
+      if (Math.abs(a - b) / Math.max(a, b) <= tolRatio) { group.push(j); used[j] = true; }
+    }
+    if (group.length < 2) continue;
+    let sum = 0;
+    for (const k of group) sum += shapes[k][0];
+    const avg = sum / group.length;
+    for (const k of group) { shapes[k][0] = avg; unified++; }
+  }
+  return unified;
+}
+
 /** 供测试直接调用（内部函数，生产流程不依赖） */
-export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, fitCircleShapes, snapAxisAlignedEdges, turnAngleDeg };
+export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, fitCircleShapes, fitAxisAlignedEllipse, snapAxisAlignedEdges, turnAngleDeg };
 
 /** 把各类跳过统计汇总成用户可读的提示 */
 function pushSkipWarnings(warnings, skipped) {  if (skipped.gradient) warnings.push(skipped.gradient + ' 个渐变/图案填充路径已跳过合并');
@@ -1382,7 +1483,7 @@ function fitCircleShapes(p, tolRatio = 0.02) {
   const n = segs.length;
   /* 只处理「简单路径」：节点少的形状才可能是圆（眼球/腮红/高光）；
      节点多的复杂轮廓（头发、脸部外形）若被强制圆化会改变形状 */
-  if (!p.closed || n < 8 || n > 60) return 0;
+  if (!p.closed || n < 4 || n > 60) return 0;
 
   /* 沿路径采样（曲线段也采），用于判定圆度 */
   const pts = [];
@@ -1396,7 +1497,7 @@ function fitCircleShapes(p, tolRatio = 0.02) {
     const SPD = 4;
     for (let k = 0; k < SPD; k++) pts.push(cubicAt(p0, p1, p2, p3, k / SPD));
   }
-  if (pts.length < 12) return 0;
+  if (pts.length < 8) return 0;
 
   /* 最小二乘圆拟合（Kåsa 线性法） */
   let mx = 0, my = 0;
@@ -1455,7 +1556,7 @@ function fitCircleShapes(p, tolRatio = 0.02) {
  *     平滑档位 ≥ 2 时改为「重采样 + D-P + 全曲线拟合」，并尝试几何基元拟合（近似圆 → 标准圆）
  * @returns {number} 移除／改动的锚点总数
  */
-function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5) {
+function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08) {
   let count = 0;
   const children = item.className === 'CompoundPath' ? item.children.slice() : [item];
 
@@ -1482,9 +1583,15 @@ function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02, al
     } else if (smoothLevel >= 2) {
       // 曲线路径：重采样简化（真正减少节点）
       count += resampleSimplify(p, tol, smoothLevel, fitK);
-      /* 几何基元拟合：近似圆 → 标准圆（节点降到 4，边缘完美平滑） */
+      /* 几何基元拟合：近似圆 → 标准圆；不成圆但轴对齐的椭圆元素（蘑菇帽、兔耳、白点）
+         → 标准椭圆（节点降到 4，边缘成为完美曲线） */
       const circleCut = fitCircleShapes(p, circleTol);
-      if (circleCut > 0) count += circleCut;
+      if (circleCut > 0) {
+        count += circleCut;
+      } else {
+        const ellipseCut = fitAxisAlignedEllipse(p, ellipseTol);
+        if (ellipseCut > 0) count += ellipseCut;
+      }
     } else {
       // 曲线路径（保守档）：先把近直线曲线段转直，再对折线区间做 D-P
       count += flattenNearStraightCurves(p, tol);

@@ -492,6 +492,114 @@ export function protectInteriorSameColor(src, opts = {}) {
   return { imageData: out, changed, bg: [bgR, bgG, bgB] };
 }
 
+
+/* ============================ 6. 主色归并（色块整合） ============================
+ * 插画本质上只有少数几种「主色」，其余像素是抗锯齿过渡与 JPEG 压缩噪点。
+ * 这些杂色会被描摹引擎切成大量碎块（实测一张 5 色系插画可输出 673 个色块）。
+ *
+ * 做法（与中值切割量化的关键区别）：
+ *   1. 按像素数排序色箱 → 非极大值抑制提取「主色」（保证主色不被背景吃掉）
+ *   2. 每个像素归并到最近主色（色差 ≤ mergeDist 才归一，超出则保留原色）
+ *   3. 归并是像素级的，同色相连区域自然合并（即空间连通约束）
+ *
+ * @param {ImageData} src
+ * @param {Object} [opts]
+ * @param {number} [opts.paletteSize=24] 主色数量上限
+ * @param {number} [opts.minSep=20]      主色之间的最小色差（非极大值抑制）
+ * @param {number} [opts.mergeDist=40]   像素归并到主色的最大色差
+ * @returns {{imageData: ImageData, colorsBefore: number, colorsAfter: number, palette: number[][]}}
+ */
+export function mergeToPalette(src, opts = {}) {
+  const { paletteSize = 24, minSep = 20, mergeDist = 40 } = opts;
+  const { data } = src;
+  if (!data || !data.length) return { imageData: src, colorsBefore: 0, colorsAfter: 0, palette: [] };
+
+  /* 1) 直方图（5bit 箱） */
+  const count = new Float64Array(BINS);
+  const sumR = new Float64Array(BINS);
+  const sumG = new Float64Array(BINS);
+  const sumB = new Float64Array(BINS);
+  const bins = [];
+  const decBox = (idx, ch) => {
+    const shift = ch === 0 ? BITS * 2 : ch === 1 ? BITS : 0;
+    return ((idx >> shift) & ((1 << BITS) - 1)) * (256 / (1 << BITS)) + (128 / (1 << BITS));
+  };
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 8) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const idx = ((r >> SHIFT) << (BITS * 2)) | ((g >> SHIFT) << BITS) | (b >> SHIFT);
+    if (count[idx] === 0) bins.push(idx);
+    count[idx]++;
+    sumR[idx] += r; sumG[idx] += g; sumB[idx] += b;
+  }
+  if (bins.length <= paletteSize) {
+    return { imageData: src, colorsBefore: bins.length, colorsAfter: bins.length, palette: [] };
+  }
+
+  /* 2) 非极大值抑制提取主色：按像素数降序，与已选主色色差 ≥ minSep 才入选 */
+  bins.sort((a, b) => count[b] - count[a]);
+  const palette = [];
+  const sep2 = minSep * minSep;
+  for (const idx of bins) {
+    const n = count[idx];
+    const mr = sumR[idx] / n, mg = sumG[idx] / n, mb = sumB[idx] / n;
+    let ok = true;
+    for (const p of palette) {
+      const dr = p[0] - mr, dg = p[1] - mg, db = p[2] - mb;
+      if (dr * dr + dg * dg + db * db < sep2) { ok = false; break; }
+    }
+    if (!ok) continue;
+    palette.push([mr, mg, mb]);
+    if (palette.length >= paletteSize) break;
+  }
+  if (palette.length < 2) {
+    return { imageData: src, colorsBefore: bins.length, colorsAfter: bins.length, palette: [] };
+  }
+
+  /* 3) 构建 LUT：每个色箱 → 最近主色（色差超 mergeDist 则保留自身均值） */
+  const lutR = new Uint8Array(BINS);
+  const lutG = new Uint8Array(BINS);
+  const lutB = new Uint8Array(BINS);
+  const md2 = mergeDist * mergeDist;
+  for (const idx of bins) {
+    const n = count[idx];
+    const mr = sumR[idx] / n, mg = sumG[idx] / n, mb = sumB[idx] / n;
+    let best = -1, bestD = Infinity;
+    for (let k = 0; k < palette.length; k++) {
+      const p = palette[k];
+      const dr = p[0] - mr, dg = p[1] - mg, db = p[2] - mb;
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    if (best >= 0 && bestD <= md2) {
+      lutR[idx] = Math.round(palette[best][0]);
+      lutG[idx] = Math.round(palette[best][1]);
+      lutB[idx] = Math.round(palette[best][2]);
+    } else {
+      lutR[idx] = Math.round(mr);
+      lutG[idx] = Math.round(mg);
+      lutB[idx] = Math.round(mb);
+    }
+  }
+
+  /* 4) 应用 */
+  const out = cloneData(src);
+  const dp = out.data;
+  for (let i = 0; i < dp.length; i += 4) {
+    if (dp[i + 3] < 8) continue;
+    const idx = ((dp[i] >> SHIFT) << (BITS * 2)) | ((dp[i + 1] >> SHIFT) << BITS) | (dp[i + 2] >> SHIFT);
+    dp[i] = lutR[idx];
+    dp[i + 1] = lutG[idx];
+    dp[i + 2] = lutB[idx];
+  }
+  const after = new Set();
+  for (let i = 0; i < dp.length; i += 4) {
+    if (dp[i + 3] < 8) continue;
+    after.add(((dp[i] >> SHIFT) << (BITS * 2)) | ((dp[i + 1] >> SHIFT) << BITS) | (dp[i + 2] >> SHIFT));
+  }
+  return { imageData: out, colorsBefore: bins.length, colorsAfter: after.size, palette };
+}
+
 /* ============================ 主入口 ============================ */
 
 /**
@@ -507,7 +615,7 @@ export function protectInteriorSameColor(src, opts = {}) {
  * @returns {{imageData: ImageData, stats: Object}}
  */
 export function preprocess(src, opts = {}) {
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = true, onProgress } = opts;
+  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = true, paletteMerge = false, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
@@ -553,7 +661,15 @@ export function preprocess(src, opts = {}) {
     }
   }
 
-  if (maxColors >= 2) {
+  if (paletteMerge) {
+    onProgress?.(85, '主色归并');
+    const mp = mergeToPalette(img, typeof paletteMerge === 'object' ? paletteMerge : {});
+    img = mp.imageData;
+    colorAfterQuantize = mp.colorsAfter || colorsBefore;
+    if (mp.colorsBefore > mp.colorsAfter) {
+      steps.push(`主色归并 ${mp.colorsBefore} → ${mp.colorsAfter} 色`);
+    }
+  } else if (maxColors >= 2) {
     onProgress?.(85, '颜色量化');
     const q = quantizeMedianCut(img, maxColors);
     img = q.imageData;
