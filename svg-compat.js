@@ -303,7 +303,7 @@ export function restoreBackgroundColor(svgText, bg, shade, tol = 6) {
  * @param {number} [tol=10] 颜色匹配容差
  * @returns {string}
  */
-export function restoreProtectedColors(svgText, elements, tol = 10) {
+export function restoreProtectedColors(svgText, elements, tol = 40) {
   if (!elements || !elements.length) return svgText;
   let doc;
   try {
@@ -335,6 +335,7 @@ export function restoreProtectedColors(svgText, elements, tol = 10) {
   let fixed = 0;
   for (const e of elements) {
     if (!e || !e.from || !e.to) continue;
+    let matched = false;
     for (const p of paths) {
       const dc = Math.abs(p.rgb[0] - e.to[0]) + Math.abs(p.rgb[1] - e.to[1]) + Math.abs(p.rgb[2] - e.to[2]);
       if (dc > tol) continue;
@@ -343,7 +344,28 @@ export function restoreProtectedColors(svgText, elements, tol = 10) {
       p.el.setAttribute('fill', hex(e.from));
       p.rgb = e.from.slice();
       fixed++;
+      matched = true;
       break;
+    }
+    /* 回退匹配：仅当颜色匹配未命中（引擎输出的颜色有偏差）时，
+       改用「位置 + 面积接近 + 颜色更接近元素原色」三重约束匹配 */
+    if (!matched) {
+      let best = null, bestA = Infinity;
+      for (const p of paths) {
+        if (e.cx < p.minX - 3 || e.cx > p.maxX + 3 || e.cy < p.minY - 3 || e.cy > p.maxY + 3) continue;
+        const bw = p.maxX - p.minX, bh = p.maxY - p.minY;
+        const area = bw * bh;
+        const ratio = area / Math.max(1, e.area);
+        if (ratio < 0.3 || ratio > 3) continue;
+        /* 该图元的颜色应比周围更接近元素原色而非背景 */
+        const dcFrom = Math.abs(p.rgb[0] - e.from[0]) + Math.abs(p.rgb[1] - e.from[1]) + Math.abs(p.rgb[2] - e.from[2]);
+        if (dcFrom < bestA) { bestA = dcFrom; best = p; }
+      }
+      if (best && bestA <= 90) {
+        best.el.setAttribute('fill', hex(e.from));
+        best.rgb = e.from.slice();
+        fixed++;
+      }
     }
   }
   return fixed ? new XMLSerializer().serializeToString(doc.documentElement) : svgText;

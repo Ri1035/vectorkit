@@ -1819,6 +1819,61 @@ function dpSimplifyOpen(pts, tol) {
   return keep;
 }
 
+
+/**
+ * 轮廓低通平滑（方案 F，自研）：抹平单色块边缘的「高频毛糙 / 碎边」。
+ *
+ * 根因：位图抗锯齿的过渡像素让描摹出的边界带有 1–2px 的高频起伏
+ * （低曲率的长边上表现为"毛边/碎边"），全曲线拟合只能平滑低曲率点，
+ * 无法消除这种"点间距级别的抖动"。
+ *
+ * 做法：对重采样后的点列做**曲率保护的低通滤波** ——
+ * 只在低曲率区域（转角小于阈值的连续段）用邻域加权平均修正坐标，
+ * 角点（高曲率）原样保留，因此不会磨损细节与硬边。
+ *
+ * @param {Array<{x:number,y:number}>} pts 闭合点列（就地修改）
+ * @param {Object} [opts]
+ * @param {number} [opts.window=2]    邻域半径（±N 点）
+ * @param {number} [opts.maxTurn=25]  只平滑转角小于该值的点（度）
+ * @param {number} [opts.strength=0.6] 平滑强度（0–1）
+ * @returns {number} 被平滑的点数
+ */
+function smoothContourPoints(pts, opts = {}) {
+  const { window = 2, maxTurn = 25, strength = 0.6 } = opts;
+  const n = pts.length;
+  if (n < 8) return 0;
+  const turn = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = pts[(i - 1 + n) % n], b = pts[i], c = pts[(i + 1) % n];
+    const v1x = a.x - b.x, v1y = a.y - b.y;
+    const v2x = c.x - b.x, v2y = c.y - b.y;
+    const l1 = Math.hypot(v1x, v1y), l2 = Math.hypot(v2x, v2y);
+    if (l1 < 1e-9 || l2 < 1e-9) { turn[i] = 180; continue; }
+    let cos = (v1x * v2x + v1y * v2y) / (l1 * l2);
+    cos = cos > 1 ? 1 : cos < -1 ? -1 : cos;
+    turn[i] = 180 - Math.acos(cos) * 180 / Math.PI;
+  }
+  const out = pts.map(p => ({ x: p.x, y: p.y }));
+  let smoothed = 0;
+  for (let i = 0; i < n; i++) {
+    if (turn[i] > maxTurn) continue;                  // 角点保护
+    let sx = 0, sy = 0, sw = 0;
+    for (let k = -window; k <= window; k++) {
+      const j = (i + k + n) % n;
+      if (turn[j] > maxTurn) continue;                // 邻域含角点时跳过（避免磨圆硬边）
+      const w = 1 / (1 + Math.abs(k));                // 距离越近权重越大
+      sx += pts[j].x * w; sy += pts[j].y * w; sw += w;
+    }
+    if (!sw) continue;
+    const ax = sx / sw, ay = sy / sw;
+    out[i].x = pts[i].x + (ax - pts[i].x) * strength;
+    out[i].y = pts[i].y + (ay - pts[i].y) * strength;
+    smoothed++;
+  }
+  for (let i = 0; i < n; i++) { pts[i].x = out[i].x; pts[i].y = out[i].y; }
+  return smoothed;
+}
+
 function resampleSimplify(p, tol, smoothLevel, fitK = 0, adaptive = true) {
   const segs = p.segments;
   const n = segs.length;
@@ -1841,6 +1896,9 @@ function resampleSimplify(p, tol, smoothLevel, fitK = 0, adaptive = true) {
   const kept = [];
   for (let i = 0; i < pts.length; i++) if (keep[i]) kept.push(pts[i]);
   if (kept.length < 3 || kept.length >= n) return 0;   // 无收益就不动
+
+  /* 方案 F：低通平滑（曲率保护）——先抹平边界高频毛糙，再做全曲线拟合 */
+  if (kept.length >= 8) smoothContourPoints(kept, { window: 2, maxTurn: 25, strength: 0.6 });
 
   const Point = p.segments[0].point.constructor;
   p.removeSegments();

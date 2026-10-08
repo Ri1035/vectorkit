@@ -622,7 +622,9 @@ export function mergeToPalette(src, opts = {}) {
  * @returns {{imageData: ImageData, elements: Array}}
  */
 export function protectInteriorElements(src, opts = {}) {
-  const { shift = 16, surroundRatio = 0.6, brighten = 120, lumGap = 40,
+  /* shift 必须**明显大于**引擎的层间差异阈值（layerDifference 默认 16）：
+     实测 16 恰好等于阈值会被引擎归为同层吞掉（与「背景偏移」踩过同一个坑），28 才稳定分层 */
+  const { shift = 28, surroundRatio = 0.6, brighten = 120, lumGap = 40,
     minAreaRatio = 1 / 200000, maxAreaRatio = 1 / 400 } = opts;
   const { width: w, height: h, data } = src;
   if (!data || !data.length || w < 8 || h < 8) return { imageData: src, elements: [] };
