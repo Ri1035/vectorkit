@@ -1375,6 +1375,125 @@ export function snapAdjacentBoundaries(svgText, opts = {}) {
   return { svg: new XMLSerializer().serializeToString(doc.documentElement), snapped };
 }
 
+
+/* ============================ 等半径统一（方案 D）============================
+ * 设计稿里成组的圆点（蘑菇帽白点、装饰点）通常用**同一尺寸**绘制，
+ * 描摹后各点半径会有 ±10% 左右的抖动，看起来"不整齐"。
+ * 本步骤识别「4 锚点闭合路径」（我们的圆/椭圆拟合产物），按半径聚类，
+ * 把尺寸相近的一组统一为同一半径（圆心与长短轴比例保持不变）。
+ */
+
+/**
+ * @param {string} svgText
+ * @param {Object} [opts]
+ * @param {number} [opts.tolRatio=0.18] 半径相近判据（相对差）
+ * @param {number} [opts.minCount=3]    一组至少包含多少个才统一
+ * @param {number} [opts.maxR=60]       只处理小元素（半径上限，px）
+ * @returns {{svg: string, unified: number, groups: number}}
+ */
+export function unifyEqualRadiiInSvg(svgText, opts = {}) {
+  const { tolRatio = 0.18, minCount = 3, maxR = 60 } = opts;
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  } catch { return { svg: svgText, unified: 0, groups: 0 }; }
+  if (doc.querySelector('parsererror')) return { svg: svgText, unified: 0, groups: 0 };
+
+  /* 1) 收集「拟合形状」：单个 M + 3 段 C + Z 的闭合子路径。
+   *    注意：同色合并会把多个圆并成一个 CompoundPath（多个 M 子路径），
+   *    因此必须**按子路径拆分**逐一识别（只认整条 d 会一个都匹配不到）。 */
+  const shapes = [];
+  doc.querySelectorAll('path').forEach(el => {
+    const d = el.getAttribute('d') || '';
+    /* 按 M/m 拆成子路径（保留分隔） */
+    const parts = d.split(/(?=[Mm])/).filter(s => s.trim());
+    parts.forEach(part => {
+      const seq = (part.match(/[A-Za-z]/g) || []).join('').toUpperCase();
+      /* 拟合产物 = 4 段贝塞尔构成的闭合椭圆：M + 4C + Z */
+      if (seq !== 'MCCCCZ' && seq !== 'MCCCZ') return;
+      const toks = part.match(/[MmLlCcZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g) || [];
+      const anchors = [];
+      let i = 0, cx = 0, cy = 0;
+      while (i < toks.length) {
+        const t = toks[i++];
+        const rel = t >= 'a' && t <= 'z';
+        if (t === 'M' || t === 'm') {
+          let x = +toks[i++], y = +toks[i++];
+          if (rel) { x += cx; y += cy; }
+          cx = x; cy = y; anchors.push([cx, cy]);
+        } else if (t === 'C' || t === 'c') {
+          i += 4;
+          let x = +toks[i++], y = +toks[i++];
+          if (rel) { x += cx; y += cy; }
+          cx = x; cy = y; anchors.push([cx, cy]);
+        } else if (t === 'Z' || t === 'z') { /* 结束 */ }
+        else return;
+      }
+      if (anchors.length < 3) return;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const [x, y] of anchors) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+      const rx = (maxX - minX) / 2, ry = (maxY - minY) / 2;
+      const r = (rx + ry) / 2;
+      if (r < 1.5 || r > maxR) return;
+      shapes.push({ el, part, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, rx, ry, r });
+    });
+  });
+
+  if (shapes.length < minCount) return { svg: svgText, unified: 0, groups: 0 };
+
+  /* 2) 半径聚类（贪心，按半径排序后分组） */
+  const order = shapes.map((s, i) => i).sort((a, b) => shapes[a].r - shapes[b].r);
+  const used = new Array(shapes.length).fill(false);
+  const groups = [];
+  for (const i of order) {
+    if (used[i]) continue;
+    const g = [i]; used[i] = true;
+    for (const j of order) {
+      if (used[j]) continue;
+      const a = shapes[i].r, b = shapes[j].r;
+      if (Math.abs(a - b) / Math.max(a, b) <= tolRatio) { g.push(j); used[j] = true; }
+    }
+    if (g.length >= minCount) groups.push(g);
+  }
+  if (!groups.length) return { svg: svgText, unified: 0, groups: 0 };
+
+  /* 3) 统一半径并重建（保持中心与 rx/ry 比例；按子路径替换原始 d） */
+  let unified = 0;
+  const K = 0.5522847498;
+  const rebuild = new Map();     // el → [新子路径 d]
+  for (const g of groups) {
+    let sum = 0;
+    for (const i of g) sum += shapes[i].r;
+    const avgR = sum / g.length;
+    for (const i of g) {
+      const s = shapes[i];
+      const scale = avgR / s.r;
+      const nrx = s.rx * scale, nry = s.ry * scale;
+      const hx = nrx * K, hy = nry * K;
+      const { cx, cy } = s;
+      const d = 'M' + (cx + nrx).toFixed(2) + ',' + cy.toFixed(2)
+        + 'C' + (cx + nrx).toFixed(2) + ',' + (cy + hy).toFixed(2) + ' ' + (cx + hx).toFixed(2) + ',' + (cy + nry).toFixed(2) + ' ' + cx.toFixed(2) + ',' + (cy + nry).toFixed(2)
+        + 'C' + (cx - hx).toFixed(2) + ',' + (cy + nry).toFixed(2) + ' ' + (cx - nrx).toFixed(2) + ',' + (cy + hy).toFixed(2) + ' ' + (cx - nrx).toFixed(2) + ',' + cy.toFixed(2)
+        + 'C' + (cx - nrx).toFixed(2) + ',' + (cy - hy).toFixed(2) + ' ' + (cx - hx).toFixed(2) + ',' + (cy - nry).toFixed(2) + ' ' + cx.toFixed(2) + ',' + (cy - nry).toFixed(2)
+        + 'C' + (cx + hx).toFixed(2) + ',' + (cy - nry).toFixed(2) + ' ' + (cx + nrx).toFixed(2) + ',' + (cy - hy).toFixed(2) + ' ' + (cx + nrx).toFixed(2) + ',' + cy.toFixed(2) + 'Z';
+      if (!rebuild.has(s.el)) rebuild.set(s.el, []);
+      rebuild.get(s.el).push({ orig: s.part, next: d });
+      unified++;
+    }
+  }
+  /* 应用：把原 d 中的匹配子路径替换为新 d */
+  for (const [el, list] of rebuild) {
+    let d0 = el.getAttribute('d') || '';
+    for (const { orig, next } of list) d0 = d0.replace(orig, next);
+    el.setAttribute('d', d0);
+  }
+
+  return { svg: new XMLSerializer().serializeToString(doc.documentElement), unified, groups: groups.length };
+}
+
 /** 供测试直接调用（内部函数，生产流程不依赖） */
 export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, fitCircleShapes, fitAxisAlignedEllipse, snapAxisAlignedEdges, turnAngleDeg };
 

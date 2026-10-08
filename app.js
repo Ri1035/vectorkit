@@ -4,7 +4,7 @@
 import { toLegacySvg, restoreBackgroundColor } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
-import { mergeSameColorPaths, restoreLostDetails, snapAdjacentBoundaries } from './merge-paths.js';
+import { mergeSameColorPaths, restoreLostDetails, snapAdjacentBoundaries, unifyEqualRadiiInSvg } from './merge-paths.js';
 import { preprocess, countColors } from './preprocess.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -928,6 +928,14 @@ async function runVectorize(force) {
           if (snapRes.snapped > 0) svgText = snapRes.svg;
         } catch (e) {
           console.warn('边界吸附跳过', e);
+        }
+        /* 方案 D：等半径统一——把尺寸相近的成组圆点（蘑菇帽白点、装饰点）统一半径，
+           还原设计稿里"同一尺寸"的整齐感 */
+        try {
+          const radRes = unifyEqualRadiiInSvg(svgText, { tolRatio: 0.18, minCount: 3 });
+          if (radRes.unified > 0) svgText = radRes.svg;
+        } catch (e) {
+          console.warn('等半径统一跳过', e);
         }
       } catch (e) {
         console.warn('矢量后处理失败，使用原 SVG', e);
