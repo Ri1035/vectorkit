@@ -470,17 +470,22 @@ export function protectInteriorSameColor(src, opts = {}) {
     if (py < h - 1) { const n = pi + w; if (!isBg[n] && near(n * 4)) { isBg[n] = 1; queue[qt++] = n; } }
   }
 
-  /* 3) 背景像素颜色轻微偏移（向中间灰方向），内部同色区域保持原样 */
+  /* 3) 背景像素统一为同一个偏移色，内部同色区域保持原样。
+   *    关键：必须「统一赋值」而不是「逐像素偏移」——JPEG 压缩会让背景存在 ±3 的噪声，
+   *    逐像素偏移会把噪声放大成 223–227 的多个近似色，使背景色复杂度暴增，
+   *    进而干扰引擎分层与颜色量化（曾导致量化后整图变成一块）。
+   *    统一赋值同时起到「背景去噪」的作用。 */
   const out = cloneData(src);
   const dp = out.data;
   const shift = (v) => (v >= 128 ? Math.max(0, v - shade) : Math.min(255, v + shade));
+  const bgR2 = shift(bgR), bgG2 = shift(bgG), bgB2 = shift(bgB);
   let changed = 0;
   for (let pi = 0; pi < w * h; pi++) {
     if (!isBg[pi]) continue;
     const i = pi * 4;
-    dp[i] = shift(dp[i]);
-    dp[i + 1] = shift(dp[i + 1]);
-    dp[i + 2] = shift(dp[i + 2]);
+    dp[i] = bgR2;
+    dp[i + 1] = bgG2;
+    dp[i + 2] = bgB2;
     changed++;
   }
   if (!changed) return { imageData: src, changed: 0, bg: [bgR, bgG, bgB] };
