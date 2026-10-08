@@ -190,6 +190,9 @@ function revoke(u) {
 
 const stripExt = n => n.replace(/\.[^.]+$/, '');
 
+/* 实验性开关（默认全关，避免影响既有质量基线） */
+const DETAIL_RESTORE = false;
+
 function ensureSvgSize(svgText, w, h, force = false) {
   try {
     const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
@@ -922,9 +925,9 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
-    /* 丢失细节补点：引擎会吞掉「与画布底色同色且被前景包围」的小元素
-       （白色插画的眼白高光、图案内部白点）——回到像素图重新检出并补画 */
-    if (rgba && pw && ph) {
+    /* 丢失细节补点：默认关闭——在纹理密集的插画（蕨叶等）上会误检，
+       把亮纹理补成白点（用户实测反馈）。保留实现，待判据更精准后再启用。 */
+    if (DETAIL_RESTORE && rgba && pw && ph) {
       try {
         const srcImg = new ImageData(new Uint8ClampedArray(rgba), pw, ph);
         svgText = restoreLostDetails(svgText, srcImg);

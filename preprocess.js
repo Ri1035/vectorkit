@@ -615,7 +615,12 @@ export function mergeToPalette(src, opts = {}) {
  * @returns {{imageData: ImageData, stats: Object}}
  */
 export function preprocess(src, opts = {}) {
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = true, paletteMerge = false, onProgress } = opts;
+  /* interiorProtect（内部同色保护）：默认关闭。
+   * 该机制会把背景色偏移以让「与背景同色的前景小元素」被引擎保留，
+   * 但代价是引擎会额外描摹出一层「背景色区域」——其抗锯齿边缘会变成
+   * 沿图形轮廓的大量碎路径（用户实测反馈："那么多碎轮廓"），
+   * 收益（救回眼白）远小于代价。保留实现，待有更精准方案后再启用。 */
+  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = false, paletteMerge = false, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
