@@ -13,7 +13,12 @@ if (fs.existsSync(dist)) {
   fs.mkdirSync(dist, { recursive: true });
 }
 
-const files = ['index.html', 'app.js', 'matte.js', 'cmyk.js', 'eps-export.js', 'merge-paths.js', 'preprocess.js', 'svg-compat.js', 'README.md'];
+/* 自动收集根目录下所有前端模块（.js）——避免手动维护列表时遗漏新模块
+   （曾因漏掉 dxf-export.js 导致线上 DXF 导出功能不可用） */
+const files = ['index.html', 'README.md'];
+for (const f of fs.readdirSync(root)) {
+  if (f.endsWith('.js') && !f.startsWith('_')) files.push(f);
+}
 for (const f of files) {
   if (fs.existsSync(path.join(root, f))) {
     fs.copyFileSync(path.join(root, f), path.join(dist, f));
