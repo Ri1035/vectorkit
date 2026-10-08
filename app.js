@@ -4,7 +4,7 @@
 import { toLegacySvg, restoreBackgroundColor } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
-import { mergeSameColorPaths } from './merge-paths.js';
+import { mergeSameColorPaths, restoreLostDetails } from './merge-paths.js';
 import { preprocess, countColors } from './preprocess.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -922,6 +922,16 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
+    /* 丢失细节补点：引擎会吞掉「与画布底色同色且被前景包围」的小元素
+       （白色插画的眼白高光、图案内部白点）——回到像素图重新检出并补画 */
+    if (rgba && pw && ph) {
+      try {
+        const srcImg = new ImageData(new Uint8ClampedArray(rgba), pw, ph);
+        svgText = restoreLostDetails(svgText, srcImg);
+      } catch (e) {
+        console.warn('细节补点跳过', e);
+      }
+    }
     /* 内部同色保护的收尾：把偏移过的背景色改回原色（矢量阶段同色不影响显示） */
     if (bgShift) {
       svgText = restoreBackgroundColor(svgText, bgShift.from, bgShift.shade);

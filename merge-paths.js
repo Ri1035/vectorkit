@@ -880,6 +880,193 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   return { svg: out, stats, warnings };
 }
 
+
+/* ============================ 丢失细节补点 ============================
+ * 描摹引擎的分层策略会把「与画布底色同色、且被前景包围的小区域」当作背景处理，
+ * 导致这类前景元素在输出中消失——典型场景：白色插画的眼白高光、图案内部的白点。
+ *
+ * 这里在矢量化完成后，回到（预处理后的）像素图重新检测这类小元素，
+ * 用几何基元（椭圆）把它们补画进 SVG。判据：
+ *   1. 亮度接近画布底色、面积为 20–5000 px²、不接触图像边缘
+ *   2. 被深色包围（外环像素中暗色占比 ≥ 60%）——这是"前景孔洞元素"的关键特征
+ *   3. 输出 SVG 中尚无同色且位置重叠的图元（避免重复）
+ */
+
+/**
+ * @param {string} svgText  已完成合并的后处理 SVG
+ * @param {ImageData} imgData 与 SVG 网格同尺寸的（预处理后）像素图
+ * @param {Object} [opts]
+ * @param {number} [opts.minArea=20]    最小面积（px²）
+ * @param {number} [opts.maxArea=5000]  最大面积（px²）
+ * @param {number} [opts.surroundRatio=0.6] 外环暗色像素占比门槛
+ * @param {number} [opts.brighten=120]   元素须比周围平均亮度高出多少（高光特征）
+ * @param {number} [opts.lumGap=40]     前景与周围判定为"暗"的亮度差
+ * @returns {string} 补点后的 SVG
+ */
+export function restoreLostDetails(svgText, imgData, opts = {}) {
+  const { surroundRatio = 0.6, brighten = 120, lumGap = 40,
+    minAreaRatio = 1 / 200000, maxAreaRatio = 1 / 400 } = opts;
+  if (!imgData || !imgData.width || !imgData.height) return svgText;
+
+  const { width: w, height: h, data } = imgData;
+  /* 面积门槛按网格大小自适应：同一元素在不同描摹尺寸下像素面积差 4 倍，
+     固定阈值会在小尺寸下漏检（实测：800 网格下眼白仅 15-17px²，被固定 20 的阈值卡掉） */
+  const minArea = Math.max(3, Math.round(w * h * minAreaRatio));
+  const maxArea = Math.max(400, Math.round(w * h * maxAreaRatio));
+  const N = w * h;
+  const lum = new Float32Array(N);
+  for (let i = 0, pi = 0; pi < N; pi++, i += 4) {
+    lum[pi] = data[i + 3] < 8 ? -1 : (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+  }
+
+  /* 画布底色亮度：四边采样中位数 */
+  const edgeVals = [];
+  for (let x = 0; x < w; x += 2) { edgeVals.push(lum[x], lum[(h - 1) * w + x]); }
+  for (let y = 0; y < h; y += 2) { edgeVals.push(lum[y * w], lum[y * w + w - 1]); }
+  edgeVals.sort((a, b) => a - b);
+  const bgLum = edgeVals[Math.floor(edgeVals.length / 2)] || 255;
+
+  const visited = new Uint8Array(N);
+  const queue = new Int32Array(N);
+  const found = [];
+  /* 只要「足够亮」即可，不要求接近画布底色——眼白高光周围是抗锯齿过渡像素
+     （亮度 165–220），若强制接近底色（bgLum-12）则只能检出最中心的 2×2 像素 */
+  const isBright = pi => lum[pi] >= Math.max(150, bgLum - 60);
+
+  for (let start = 0; start < N; start++) {
+    if (visited[start] || !isBright(start)) continue;
+    /* BFS 收集连通域 */
+    let qh = 0, qt = 0;
+    queue[qt++] = start; visited[start] = 1;
+    let area = 0, sx = 0, sy = 0, sr = 0, sg = 0, sb = 0;
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    const members = [];
+    while (qh < qt) {
+      const pi = queue[qh++];
+      const x = pi % w, y = (pi - x) / w;
+      area++; sx += x; sy += y;
+      const i = pi * 4;
+      sr += data[i]; sg += data[i + 1]; sb += data[i + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      members.push(pi);
+      if (x > 0) { const n = pi - 1; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+      if (x < w - 1) { const n = pi + 1; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+      if (y > 0) { const n = pi - w; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+      if (y < h - 1) { const n = pi + w; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+    }
+    if (area < minArea || area > maxArea) continue;
+    if (minX <= 1 || minY <= 1 || maxX >= w - 2 || maxY >= h - 2) continue;   // 贴边 → 视为背景
+
+    /* 外环暗色占比（膨胀 3px 的环）；用 Set 判定成员，避免 O(n²) 卡顿 */
+    const memberSet = new Set(members);
+    const ring = new Set();
+    for (const pi of members) {
+      const x = pi % w, y = (pi - x) / w;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const npi = ny * w + nx;
+          if (memberSet.has(npi)) continue;
+          ring.add(npi);
+        }
+      }
+    }
+    let ringDark = 0, ringTotal = 0, ringLumSum = 0;
+    const avgLum = (0.299 * sr + 0.587 * sg + 0.114 * sb) / area;
+    for (const pi of ring) {
+      if (lum[pi] < 0) continue;
+      ringTotal++;
+      ringLumSum += lum[pi];
+      if (lum[pi] < avgLum - lumGap) ringDark++;
+    }
+    if (!ringTotal || ringDark / ringTotal < surroundRatio) continue;
+    /* 附加判据：元素必须**明显亮于周围**——这是「高光 / 眼白」的本质特征。
+       缺了它会误检「与周围亮度相近的色块」（实测会把腮红、脸部高光补成实心圆，
+       破坏原有的渐变表现）。 */
+    const ringAvg = ringLumSum / ringTotal;
+    if (avgLum - ringAvg < brighten) continue;
+
+    /* 填充色取该区域「最亮的 25% 像素」的平均色：中心高光才是元素的真实颜色，
+       全部平均会被抗锯齿过渡像素拉灰（实测 #e8e5e7 vs 真实 #ffffff） */
+    members.sort((a, b) => lum[b] - lum[a]);
+    const topN = Math.max(1, Math.round(area * 0.25));
+    let tr = 0, tg = 0, tb = 0;
+    for (let i = 0; i < topN; i++) {
+      const k = members[i] * 4;
+      tr += data[k]; tg += data[k + 1]; tb += data[k + 2];
+    }
+    const fillRgb = [Math.round(tr / topN), Math.round(tg / topN), Math.round(tb / topN)];
+    /* 最后一道判据：补点元素应为「浅色/白色」（眼白、高光的共性）。
+       缺了它会把浅米色高光也补进来（实测 1 个残留误检）。 */
+    if (Math.min(fillRgb[0], fillRgb[1], fillRgb[2]) < 200) continue;
+    found.push({
+      cx: sx / area, cy: sy / area,
+      rx: Math.max(1, (maxX - minX) / 2 + 0.5), ry: Math.max(1, (maxY - minY) / 2 + 0.5),
+      area,
+      rgb: fillRgb
+    });
+  }
+
+  if (!found.length) return svgText;
+
+  /* 与输出已有图元去重：同色且中心接近的跳过 */
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  } catch { return svgText; }
+  if (doc.querySelector('parsererror')) return svgText;
+  const svg = doc.documentElement;
+
+  const parseFill = s => {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(s || '').trim());
+    if (!m) return null;
+    return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
+  };
+  const existing = [];
+  svg.querySelectorAll('path').forEach(p => {
+    const rgb = parseFill(p.getAttribute('fill'));
+    if (!rgb) return;
+    const nums = (p.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g) || [];
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const x = +nums[i], y = +nums[i + 1];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    /* 排除「背景层」（覆盖面积 > 图面 30% 的图元）：它的 bbox 覆盖整图，
+       会让所有同色小元素的去重判断误命中（实测：白色背景层导致眼白被跳过） */
+    if ((maxX - minX) * (maxY - minY) > w * h * 0.3) return;
+    existing.push({ rgb, minX, minY, maxX, maxY });
+  });
+
+  const hex = a => '#' + a.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  const K = 0.5522847498;
+  let added = 0;
+  for (const f of found) {
+    const dup = existing.some(e => {
+      const dc = Math.abs(e.rgb[0] - f.rgb[0]) + Math.abs(e.rgb[1] - f.rgb[1]) + Math.abs(e.rgb[2] - f.rgb[2]);
+      if (dc > 24) return false;
+      return f.cx >= e.minX - 2 && f.cx <= e.maxX + 2 && f.cy >= e.minY - 2 && f.cy <= e.maxY + 2;
+    });
+    if (dup) continue;
+    const rx = f.rx, ry = f.ry, cx = f.cx, cy = f.cy;
+    const hx = rx * K, hy = ry * K;
+    const d = 'M' + (cx + rx).toFixed(2) + ',' + cy.toFixed(2)
+      + 'C' + (cx + rx).toFixed(2) + ',' + (cy + hy).toFixed(2) + ' ' + (cx + hx).toFixed(2) + ',' + (cy + ry).toFixed(2) + ' ' + cx.toFixed(2) + ',' + (cy + ry).toFixed(2)
+      + 'C' + (cx - hx).toFixed(2) + ',' + (cy + ry).toFixed(2) + ' ' + (cx - rx).toFixed(2) + ',' + (cy + hy).toFixed(2) + ' ' + (cx - rx).toFixed(2) + ',' + cy.toFixed(2)
+      + 'C' + (cx - rx).toFixed(2) + ',' + (cy - hy).toFixed(2) + ' ' + (cx - hx).toFixed(2) + ',' + (cy - ry).toFixed(2) + ' ' + cx.toFixed(2) + ',' + (cy - ry).toFixed(2)
+      + 'C' + (cx + hx).toFixed(2) + ',' + (cy - ry).toFixed(2) + ' ' + (cx + rx).toFixed(2) + ',' + (cy - hy).toFixed(2) + ' ' + (cx + rx).toFixed(2) + ',' + cy.toFixed(2) + 'Z';
+    const el = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('d', d);
+    el.setAttribute('fill', hex(f.rgb));
+    svg.appendChild(el);
+    added++;
+  }
+  return added ? new XMLSerializer().serializeToString(svg) : svgText;
+}
+
 /** 供测试直接调用（内部函数，生产流程不依赖） */
 export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, fitCircleShapes, snapAxisAlignedEdges, turnAngleDeg };
 
