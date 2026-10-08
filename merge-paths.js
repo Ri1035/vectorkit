@@ -1231,6 +1231,150 @@ function unifyEqualRadii(shapes, tolRatio = 0.15) {
   return unified;
 }
 
+
+/* ============================ 相邻色块边界一致化（方案 B）============================
+ * 「碎边」的根因：相邻色块的公共边界由各自的曲线独立拟合，
+ * 拟合误差让两侧错位 0.5–2px，放大后就是毛糙的碎边/双线。
+ *
+ * 做法：把全局所有路径的锚点放入空间散列，若某锚点与**其他路径**的锚点
+ * 距离 ≤ snapTol（默认 1.2px），就把两者吸附到同一位置（取中点），
+ * 并同步平移该锚点的控制点（保持切线方向，避免形状畸变）。
+ */
+
+/**
+ * @param {string} svgText
+ * @param {Object} [opts]
+ * @param {number} [opts.snapTol=1.2]  吸附距离阈值（px）
+ * @param {number} [opts.maxShift=2.0] 单点最大位移（防止误吸附拉变形）
+ * @returns {{svg: string, snapped: number}}
+ */
+export function snapAdjacentBoundaries(svgText, opts = {}) {
+  const { snapTol = 1.2, maxShift = 2.0 } = opts;
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  } catch { return { svg: svgText, snapped: 0 }; }
+  if (doc.querySelector('parsererror')) return { svg: svgText, snapped: 0 };
+
+  /* 1) 解析每条路径为「锚点 + 控制点」结构（仅支持常见命令，其余跳过） */
+  const paths = [];
+  doc.querySelectorAll('path').forEach(el => {
+    const d = el.getAttribute('d') || '';
+    const cmds = d.match(/[MmLlHhVvCcSsQqTtAaZz]|[^MmLlHhVvCcSsQqTtAaZz]+/g) || [];
+    const anchors = [];      // {x, y, ci?} 锚点（ci = 控制点索引组）
+    const pts = [];          // 全部点（锚点 + 控制点），用于重建
+    let cx = 0, cy = 0, ok = true;
+    for (const tok of cmds) {
+      const t = tok[0];
+      if (/[A-Za-z]/.test(t)) {
+        if (!'MLCHVQZmlchvqz'.includes(t)) { ok = false; break; }
+        continue;
+      }
+    }
+    if (!ok) return;
+    /* 简化解析：只处理绝对化的 M/L/C 与相对 m/l/c（其余路径跳过吸附） */
+    const toks = d.match(/[MmLlCcZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g) || [];
+    let i = 0, started = false;
+    while (i < toks.length) {
+      const t = toks[i++];
+      const rel = t >= 'a' && t <= 'z';
+      if (t === 'M' || t === 'm') {
+        let x = +toks[i++], y = +toks[i++];
+        if (rel) { x += cx; y += cy; }
+        cx = x; cy = y;
+        anchors.push({ x, y, ref: null });
+        started = true;
+      } else if (t === 'L' || t === 'l') {
+        let x = +toks[i++], y = +toks[i++];
+        if (rel) { x += cx; y += cy; }
+        cx = x; cy = y;
+        anchors.push({ x, y, ref: null });
+      } else if (t === 'C' || t === 'c') {
+        let x1 = +toks[i++], y1 = +toks[i++], x2 = +toks[i++], y2 = +toks[i++], x3 = +toks[i++], y3 = +toks[i++];
+        if (rel) { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x3 += cx; y3 += cy; }
+        cx = x3; cy = y3;
+        anchors.push({ x: cx, y: cy, ref: null, c1: { x: x1, y: y1 }, c2: { x: x2, y: y2 } });
+      } else if (t === 'Z' || t === 'z') { /* 闭合 */ }
+      else { return; }   // 含其他命令 → 该路径不参与吸附（保守）
+    }
+    if (anchors.length < 2) return;
+    paths.push({ el, anchors, d });
+  });
+
+  if (paths.length < 2) return { svg: svgText, snapped: 0 };
+
+  /* 2) 空间散列：bucket → [{pathIdx, anchorIdx}] */
+  const BUCKET = Math.max(2, snapTol * 2);
+  const grid = new Map();
+  const key = (x, y) => Math.floor(x / BUCKET) + ',' + Math.floor(y / BUCKET);
+  paths.forEach((p, pi) => {
+    p.anchors.forEach((a, ai) => {
+      const k = key(a.x, a.y);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push([pi, ai]);
+    });
+  });
+
+  /* 3) 找相邻错位锚点对并吸附到中点 */
+  const moved = new Map();     // 'pi:ai' → {x, y}
+  let snapped = 0;
+  paths.forEach((p, pi) => {
+    p.anchors.forEach((a, ai) => {
+      const bx = Math.floor(a.x / BUCKET), by = Math.floor(a.y / BUCKET);
+      let best = null, bestD = Infinity;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const list = grid.get((bx + dx) + ',' + (by + dy));
+          if (!list) continue;
+          for (const [qj, qk] of list) {
+            if (qj === pi) continue;              // 只吸附**不同路径**之间
+            const q = paths[qj].anchors[qk];
+            const dist = Math.hypot(q.x - a.x, q.y - a.y);
+            if (dist > 0 && dist <= snapTol && dist < bestD) { bestD = dist; best = [qj, qk, q]; }
+          }
+        }
+      }
+      if (!best) return;
+      const [qj, qk, q] = best;
+      const mx = (a.x + q.x) / 2, my = (a.y + q.y) / 2;
+      const dA = Math.hypot(mx - a.x, my - a.y);
+      const dB = Math.hypot(mx - q.x, my - q.y);
+      if (dA > maxShift || dB > maxShift) return;   // 位移过大 → 可能是误吸附
+      moved.set(pi + ':' + ai, { x: mx, y: my });
+      moved.set(qj + ':' + qk, { x: mx, y: my });
+      snapped++;
+    });
+  });
+
+  if (!snapped) return { svg: svgText, snapped: 0 };
+
+  /* 4) 重建 d（绝对坐标 M/L/C；控制点同步平移以保持切线） */
+  paths.forEach((p, pi) => {
+    let out = '';
+    p.anchors.forEach((a, ai) => {
+      const mv = moved.get(pi + ':' + ai);
+      const nx = mv ? mv.x : a.x, ny = mv ? mv.y : a.y;
+      const sx = nx - a.x, sy = ny - a.y;
+      if (!out) {
+        out = 'M' + nx.toFixed(2) + ',' + ny.toFixed(2);
+      } else if (a.c1 && a.c2) {
+        out += 'C' + (a.c1.x + sx).toFixed(2) + ',' + (a.c1.y + sy).toFixed(2)
+          + ' ' + (a.c2.x + sx).toFixed(2) + ',' + (a.c2.y + sy).toFixed(2)
+          + ' ' + nx.toFixed(2) + ',' + ny.toFixed(2);
+      } else {
+        out += 'L' + nx.toFixed(2) + ',' + ny.toFixed(2);
+      }
+    });
+    if (out) {
+      /* 原路径若以 Z 结尾则保留闭合 */
+      if (/[Zz]\s*$/.test(p.d)) out += 'Z';
+      p.el.setAttribute('d', out);
+    }
+  });
+
+  return { svg: new XMLSerializer().serializeToString(doc.documentElement), snapped };
+}
+
 /** 供测试直接调用（内部函数，生产流程不依赖） */
 export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, fitCircleShapes, fitAxisAlignedEllipse, snapAxisAlignedEdges, turnAngleDeg };
 

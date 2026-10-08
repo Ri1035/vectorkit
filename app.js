@@ -4,7 +4,7 @@
 import { toLegacySvg, restoreBackgroundColor } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
-import { mergeSameColorPaths, restoreLostDetails } from './merge-paths.js';
+import { mergeSameColorPaths, restoreLostDetails, snapAdjacentBoundaries } from './merge-paths.js';
 import { preprocess, countColors } from './preprocess.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -921,6 +921,14 @@ async function runVectorize(force) {
         });
         svgText = mr.svg;
         showMergeStatus(1, mr.stats, mr.warnings);
+        /* 方案 B：相邻色块边界一致化——把错位 ≤1.2px 的相邻锚点吸附到同一位置，
+           消除「碎边」（相邻色块各自独立拟合导致的公共边界错位） */
+        try {
+          const snapRes = snapAdjacentBoundaries(svgText, { snapTol: 1.2 });
+          if (snapRes.snapped > 0) svgText = snapRes.svg;
+        } catch (e) {
+          console.warn('边界吸附跳过', e);
+        }
       } catch (e) {
         console.warn('矢量后处理失败，使用原 SVG', e);
         showMergeStatus(1, null, ['矢量后处理失败：' + (e.message || e)]);
