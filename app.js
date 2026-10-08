@@ -915,6 +915,8 @@ async function runVectorize(force) {
           tolerance: post1.tolerance,
           minArea: post1.minArea,
           edgeSmooth: post1.edgeSmooth,
+          /* 方案 C：把像素图交给碎块清理，用「与周围的对比度」区分设计细节与噪点 */
+          imgData: (rgba && pw && ph) ? new ImageData(new Uint8ClampedArray(rgba), pw, ph) : null,
           onProgress: (p, label) => prog.stage(90 + Math.round(p * 0.04), label)
         });
         svgText = mr.svg;

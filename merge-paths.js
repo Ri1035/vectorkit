@@ -516,8 +516,49 @@ function ensureClosed(shape, maxGap = 1) {
  * @param {(p:number, label:string)=>void} opts.onProgress
  * @returns {Promise<{svg:string, stats:Object|null, warnings:string[]}>}
  */
+
+/**
+ * 碎块对比度判据（方案 C）：判断一个面积很小的元素是否「与周围形成高对比」。
+ * 高对比 ⇒ 是设计细节（应保留）；低对比 ⇒ 是压缩噪点（应删除）。
+ * 这是对旧判据「只按面积删」的修正——面积无法区分细节与噪点。
+ *
+ * @param {paper.Path|paper.CompoundPath} item
+ * @param {ImageData} img 与 SVG 同网格的像素图（可为 null）
+ * @param {number} contrastKeep 判定为"高对比"的色差阈值
+ * @returns {boolean} true = 应保留
+ */
+function isHighContrastDetail(item, img, contrastKeep) {
+  if (!img || !img.width) return false;
+  const b = item.bounds;
+  if (!b || b.width <= 0 || b.height <= 0) return false;
+  const w = img.width, h = img.height, data = img.data;
+  const cx = Math.round((b.x + b.right) / 2);
+  const cy = Math.round((b.y + b.bottom) / 2);
+  if (cx < 2 || cy < 2 || cx >= w - 2 || cy >= h - 2) return false;
+  const at = (x, y) => {
+    const i = (y * w + x) * 4;
+    return [data[i], data[i + 1], data[i + 2]];
+  };
+  const center = at(cx, cy);
+  /* 外圈采样（半径 = 元素对角线的一半 + 3px），取平均色作为"周围环境" */
+  const r = Math.max(3, Math.round(Math.hypot(b.width, b.height) / 2) + 3);
+  let sr = 0, sg = 0, sb = 0, n = 0;
+  for (let a = 0; a < 8; a++) {
+    const ang = a * Math.PI / 4;
+    const x = Math.round(cx + r * Math.cos(ang));
+    const y = Math.round(cy + r * Math.sin(ang));
+    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+    const c = at(x, y);
+    sr += c[0]; sg += c[1]; sb += c[2]; n++;
+  }
+  if (!n) return false;
+  const ring = [sr / n, sg / n, sb / n];
+  const diff = Math.abs(center[0] - ring[0]) + Math.abs(center[1] - ring[1]) + Math.abs(center[2] - ring[2]);
+  return diff >= contrastKeep;
+}
+
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, adaptive = true, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, adaptive = true, imgData = null, contrastKeep = 60, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -736,8 +777,8 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
          两两配对归并每层总成本 O(n)，2000 个色块实测快约一个数量级 */
       const acc = uniteBalanced(items);
 
-      // 碎块清理：整组并集后的最大子路径面积仍然过小 → 判为碎块删除
-      if (doFilter && maxSubpathArea(acc) < minArea) {
+      // 碎块清理：面积过小 → 先看是否「与周围高对比」（高对比 = 设计细节，保留）
+      if (doFilter && maxSubpathArea(acc) < minArea && !isHighContrastDetail(acc, imgData, contrastKeep)) {
         g.list.forEach(c => drops.add(c));
         done++;
         continue;
@@ -780,7 +821,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         if (!kids.length) continue;
         if (!ensureClosed(p)) continue;
 
-        if (doFilter && maxSubpathArea(p) < minArea) { drops.add(c); continue; }
+        if (doFilter && maxSubpathArea(p) < minArea && !isHighContrastDetail(p, imgData, contrastKeep)) { drops.add(c); continue; }
 
         if (edgeSmooth > 0) {
           const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol, adaptive);
