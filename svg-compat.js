@@ -291,3 +291,60 @@ export function restoreBackgroundColor(svgText, bg, shade, tol = 6) {
   });
   return n ? new XMLSerializer().serializeToString(doc.documentElement) : svgText;
 }
+
+
+/**
+ * 还原「内部元素保护」造成的颜色偏移（方案 E 的收尾步骤）。
+ * 保护阶段把前景小元素（眼白/高光）的颜色统一偏移了 shift，使其与背景区分而被引擎保留；
+ * 矢量化完成后按「位置 + 颜色」双重匹配找到对应图元，把颜色改回原色。
+ *
+ * @param {string} svgText
+ * @param {Array<{cx:number,cy:number,from:number[],to:number[]}>} elements
+ * @param {number} [tol=10] 颜色匹配容差
+ * @returns {string}
+ */
+export function restoreProtectedColors(svgText, elements, tol = 10) {
+  if (!elements || !elements.length) return svgText;
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  } catch { return svgText; }
+  if (doc.querySelector('parsererror')) return svgText;
+
+  const parse = s => {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(s || '').trim());
+    if (!m) return null;
+    return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
+  };
+  const hex = a => '#' + a.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+
+  const paths = [];
+  doc.querySelectorAll('path').forEach(el => {
+    const rgb = parse(el.getAttribute('fill'));
+    if (!rgb) return;
+    const nums = (el.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g) || [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const x = +nums[i], y = +nums[i + 1];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    paths.push({ el, rgb, minX, minY, maxX, maxY });
+  });
+
+  let fixed = 0;
+  for (const e of elements) {
+    if (!e || !e.from || !e.to) continue;
+    for (const p of paths) {
+      const dc = Math.abs(p.rgb[0] - e.to[0]) + Math.abs(p.rgb[1] - e.to[1]) + Math.abs(p.rgb[2] - e.to[2]);
+      if (dc > tol) continue;
+      /* 位置匹配：元素中心需落在该图元的 bbox 内（含 2px 容差） */
+      if (e.cx < p.minX - 2 || e.cx > p.maxX + 2 || e.cy < p.minY - 2 || e.cy > p.maxY + 2) continue;
+      p.el.setAttribute('fill', hex(e.from));
+      p.rgb = e.from.slice();
+      fixed++;
+      break;
+    }
+  }
+  return fixed ? new XMLSerializer().serializeToString(doc.documentElement) : svgText;
+}

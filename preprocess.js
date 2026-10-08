@@ -600,6 +600,134 @@ export function mergeToPalette(src, opts = {}) {
   return { imageData: out, colorsBefore: bins.length, colorsAfter: after.size, palette };
 }
 
+
+/* ============================ 7. 内部元素保护（方案 E）============================
+ * 问题：描摹引擎的分层策略会把「与画布底色同色、且被前景包围」的小元素
+ * 当作背景处理 —— 典型是白色插画的眼白高光、图案内部的白点，它们会整体消失。
+ *
+ * 与前代方案的对比（重要）：
+ *   ✗ 旧「内部同色保护」= 改**背景**色 → 引擎会额外描摹一层背景色区域 →
+ *     其抗锯齿边缘变成沿图形轮廓的大量碎路径（用户实测反馈否决）
+ *   ✓ 本方案 = 只微调**前景元素**的颜色（背景完全不动）→ 元素与背景区分开被保留，
+ *     且不会多出背景层 → 无碎轮廓
+ *
+ * 颜色偏移是可逆的（统一 shift），矢量化完成后由 restoreProtectedColors() 还原原色，
+ * 用户拿到的颜色与原始素材一致。
+ *
+ * @param {ImageData} src
+ * @param {Object} [opts]
+ * @param {number} [opts.shift=16] 颜色偏移量（须大于引擎层间差异阈值的一半以上）
+ * @param {number} [opts.surroundRatio=0.6] 外环暗色占比门槛（被深色包围）
+ * @param {number} [opts.brighten=120] 元素须比周围亮多少（高光特征）
+ * @returns {{imageData: ImageData, elements: Array}}
+ */
+export function protectInteriorElements(src, opts = {}) {
+  const { shift = 16, surroundRatio = 0.6, brighten = 120, lumGap = 40,
+    minAreaRatio = 1 / 200000, maxAreaRatio = 1 / 400 } = opts;
+  const { width: w, height: h, data } = src;
+  if (!data || !data.length || w < 8 || h < 8) return { imageData: src, elements: [] };
+
+  const N = w * h;
+  const lum = new Float32Array(N);
+  for (let i = 0, pi = 0; pi < N; pi++, i += 4) {
+    lum[pi] = data[i + 3] < 8 ? -1 : (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+  }
+  const edgeVals = [];
+  for (let x = 0; x < w; x += 2) { edgeVals.push(lum[x], lum[(h - 1) * w + x]); }
+  for (let y = 0; y < h; y += 2) { edgeVals.push(lum[y * w], lum[y * w + w - 1]); }
+  edgeVals.sort((a, b) => a - b);
+  const bgLum = edgeVals[Math.floor(edgeVals.length / 2)] || 255;
+
+  const minArea = Math.max(3, Math.round(w * h * minAreaRatio));
+  const maxArea = Math.max(400, Math.round(w * h * maxAreaRatio));
+  const visited = new Uint8Array(N);
+  const queue = new Int32Array(N);
+  const isBright = pi => lum[pi] >= Math.max(150, bgLum - 60);
+  const elements = [];
+  const out = cloneData(src);
+  const dp = out.data;
+
+  for (let start = 0; start < N; start++) {
+    if (visited[start] || !isBright(start)) continue;
+    let qh = 0, qt = 0;
+    queue[qt++] = start; visited[start] = 1;
+    let area = 0, sx = 0, sy = 0, sr = 0, sg = 0, sb = 0;
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    const members = [];
+    while (qh < qt) {
+      const pi = queue[qh++];
+      const x = pi % w, y = (pi - x) / w;
+      area++; sx += x; sy += y;
+      const i = pi * 4;
+      sr += data[i]; sg += data[i + 1]; sb += data[i + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      members.push(pi);
+      if (x > 0) { const n = pi - 1; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+      if (x < w - 1) { const n = pi + 1; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+      if (y > 0) { const n = pi - w; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+      if (y < h - 1) { const n = pi + w; if (!visited[n] && isBright(n)) { visited[n] = 1; queue[qt++] = n; } }
+    }
+    if (area < minArea || area > maxArea) continue;
+    if (minX <= 1 || minY <= 1 || maxX >= w - 2 || maxY >= h - 2) continue;   // 贴边 = 背景
+
+    /* 形状规则性：眼白/高光近圆润，纹理缝隙不规则 */
+    const bw = maxX - minX + 1, bh = maxY - minY + 1;
+    if (Math.max(bw, bh) / Math.max(1, Math.min(bw, bh)) > 2.2) continue;
+    if (area / (bw * bh) < 0.6) continue;
+    if (Math.max(bw, bh) > Math.max(w, h) * 0.08) continue;
+
+    /* 被深色包围 + 明显亮于周围 */
+    const memberSet = new Set(members);
+    const ring = new Set();
+    for (const pi of members) {
+      const x = pi % w, y = (pi - x) / w;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const npi = ny * w + nx;
+          if (memberSet.has(npi)) continue;
+          ring.add(npi);
+        }
+      }
+    }
+    let ringDark = 0, ringTotal = 0, ringLumSum = 0;
+    const avgLum = (0.299 * sr + 0.587 * sg + 0.114 * sb) / area;
+    for (const pi of ring) {
+      if (lum[pi] < 0) continue;
+      ringTotal++;
+      ringLumSum += lum[pi];
+      if (lum[pi] < avgLum - lumGap) ringDark++;
+    }
+    if (!ringTotal || ringDark / ringTotal < surroundRatio) continue;
+    if (avgLum - ringLumSum / ringTotal < brighten) continue;      // 必须明显更亮
+
+    /* 取最亮 25% 像素的平均色作为元素原色 */
+    members.sort((a, b) => lum[b] - lum[a]);
+    const topN = Math.max(1, Math.round(area * 0.25));
+    let tr = 0, tg = 0, tb = 0;
+    for (let i = 0; i < topN; i++) {
+      const k = members[i] * 4;
+      tr += data[k]; tg += data[k + 1]; tb += data[k + 2];
+    }
+    const from = [Math.round(tr / topN), Math.round(tg / topN), Math.round(tb / topN)];
+    if (Math.min(from[0], from[1], from[2]) < 200) continue;        // 只保护浅色（白/近白）
+
+    /* 颜色向「远离底色」方向统一偏移 */
+    const dir = avgLum >= 128 ? -1 : 1;
+    const to = from.map(v => Math.max(0, Math.min(255, v + dir * shift)));
+    for (const pi of members) {
+      const i = pi * 4;
+      dp[i] = to[0]; dp[i + 1] = to[1]; dp[i + 2] = to[2];
+    }
+    elements.push({ cx: Math.round(sx / area), cy: Math.round(sy / area), area, from, to });
+  }
+
+  if (!elements.length) return { imageData: src, elements: [] };
+  return { imageData: out, elements };
+}
+
 /* ============================ 主入口 ============================ */
 
 /**
@@ -620,7 +748,7 @@ export function preprocess(src, opts = {}) {
    * 但代价是引擎会额外描摹出一层「背景色区域」——其抗锯齿边缘会变成
    * 沿图形轮廓的大量碎路径（用户实测反馈："那么多碎轮廓"），
    * 收益（救回眼白）远小于代价。保留实现，待有更精准方案后再启用。 */
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = false, paletteMerge = false, onProgress } = opts;
+  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = false, protectElements = false, paletteMerge = false, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
@@ -653,6 +781,17 @@ export function preprocess(src, opts = {}) {
     onProgress?.(60, '保边平滑');
     img = bilateralFilter(img, smooth);
     steps.push('保边平滑 ' + smooth + ' 档');
+  }
+
+  let protectedElements = null;
+  if (protectElements) {
+    onProgress?.(72, '内部元素保护');
+    const pe = protectInteriorElements(img, {});
+    if (pe.elements.length) {
+      img = pe.imageData;
+      protectedElements = pe.elements;
+      steps.push(`内部元素保护 ${pe.elements.length} 处`);
+    }
   }
 
   let bgShift = null;
@@ -695,6 +834,7 @@ export function preprocess(src, opts = {}) {
       width: img.width,
       height: img.height,
       bgShift,
+      protectedElements,
       rawWidth: src.width,
       rawHeight: src.height,
       upsampled,

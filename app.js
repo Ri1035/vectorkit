@@ -1,7 +1,7 @@
 /* KOKA-VectorKit —— 纯前端矢量转换器
  * 引擎在主线程按需加载（见下方「引擎（懒加载）」章节） */
 
-import { toLegacySvg, restoreBackgroundColor } from './svg-compat.js';
+import { toLegacySvg, restoreBackgroundColor, restoreProtectedColors } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
 import { mergeSameColorPaths, restoreLostDetails, snapAdjacentBoundaries, unifyEqualRadiiInSvg } from './merge-paths.js';
@@ -864,11 +864,12 @@ async function runVectorize(force) {
        直接减少送入引擎的颜色种类，从源头抑制色块数量 */
     prog.stage(14, '图像预处理');
     let pw = S1.w, ph = S1.h, rgba;
-    let upsampled = 0, bgShift = null;
+    let upsampled = 0, bgShift = null, protectedEls = null;
     if (preOpts.active) {
       await yieldFrame();
       const pre = preprocess(S1.imageData, {
         ...preOpts,
+        protectElements: true,        // 方案 E：保护被引擎吞掉的前景小元素（眼白/高光）
         onProgress: (p, label) => prog.stage(10 + Math.round(p * 0.14), label)
       });
       showPreStatus(pre.stats);
@@ -876,6 +877,7 @@ async function runVectorize(force) {
       ph = pre.stats.height;
       upsampled = pre.stats.upsampled || 0;
       bgShift = pre.stats.bgShift || null;
+      protectedEls = pre.stats.protectedElements || null;
       rgba = new Uint8Array(pre.imageData.data);
     } else {
       $(PRE_UI.status).classList.add('hidden');
@@ -958,6 +960,10 @@ async function runVectorize(force) {
       } catch (e) {
         console.warn('细节补点跳过', e);
       }
+    }
+    /* 方案 E 收尾：把保护阶段偏移过的前景元素颜色改回原色（用户拿到的颜色与素材一致） */
+    if (protectedEls && protectedEls.length) {
+      svgText = restoreProtectedColors(svgText, protectedEls);
     }
     /* 内部同色保护的收尾：把偏移过的背景色改回原色（矢量阶段同色不影响显示） */
     if (bgShift) {
