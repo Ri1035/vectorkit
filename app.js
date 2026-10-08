@@ -191,6 +191,9 @@ function revoke(u) {
 const stripExt = n => n.replace(/\.[^.]+$/, '');
 
 /* 实验性开关（默认全关，避免影响既有质量基线） */
+/* 细节补点（眼白/高光还原）：判据与渲染比对逻辑已实现，但在纹理密集的插画
+   （Baby Happy 蕨叶）上仍会补出多余元素——采样单点不够稳健。
+   保持关闭，待改用多点采样 + 更严判据并通过多图验证后再启用。 */
 const DETAIL_RESTORE = false;
 
 function ensureSvgSize(svgText, w, h, force = false) {
@@ -925,12 +928,15 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
-    /* 丢失细节补点：默认关闭——在纹理密集的插画（蕨叶等）上会误检，
-       把亮纹理补成白点（用户实测反馈）。保留实现，待判据更精准后再启用。 */
+    /* 丢失细节补点（P0-a）：引擎会吞掉「与画布底色同色且被前景包围」的小元素
+       （白色插画的眼白高光、内部白点）——回到像素图重新检出并用几何基元补画。
+       去重方式：把补点前的 SVG 渲染成像素图，检查目标位置是否已有该颜色
+       （比 bbox 猜测可靠：不会重复补画作本身已有的元素）。 */
     if (DETAIL_RESTORE && rgba && pw && ph) {
       try {
+        prog.stage(97, '细节补点');
         const srcImg = new ImageData(new Uint8ClampedArray(rgba), pw, ph);
-        svgText = restoreLostDetails(svgText, srcImg);
+        svgText = await restoreLostDetails(svgText, srcImg);
       } catch (e) {
         console.warn('细节补点跳过', e);
       }

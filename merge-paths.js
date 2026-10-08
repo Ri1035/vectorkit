@@ -901,11 +901,11 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
  * @param {number} [opts.surroundRatio=0.6] 外环暗色像素占比门槛
  * @param {number} [opts.brighten=120]   元素须比周围平均亮度高出多少（高光特征）
  * @param {number} [opts.lumGap=40]     前景与周围判定为"暗"的亮度差
- * @returns {string} 补点后的 SVG
+ * @returns {Promise<string>} 补点后的 SVG
  */
-export function restoreLostDetails(svgText, imgData, opts = {}) {
+export async function restoreLostDetails(svgText, imgData, opts = {}) {
   const { surroundRatio = 0.6, brighten = 120, lumGap = 40,
-    minAreaRatio = 1 / 200000, maxAreaRatio = 1 / 400 } = opts;
+    minAreaRatio = 1 / 200000, maxAreaRatio = 1 / 400, existingTol = 48 } = opts;
   if (!imgData || !imgData.width || !imgData.height) return svgText;
 
   const { width: w, height: h, data } = imgData;
@@ -957,6 +957,15 @@ export function restoreLostDetails(svgText, imgData, opts = {}) {
     }
     if (area < minArea || area > maxArea) continue;
     if (minX <= 1 || minY <= 1 || maxX >= w - 2 || maxY >= h - 2) continue;   // 贴边 → 视为背景
+
+    /* 形状规则性（关键判据）：眼白/高光是「规则的近圆形小块」，
+       而纹理缝隙（蕨叶线条之间、花纹间隙）是「不规则/细长的」。
+       ① 长宽比 ≤ 2.2  ② 填充度 = 面积 / bbox 面积 ≥ 0.6
+       ③ bbox 最长边 ≤ 图宽 8%（排除蔓延的大面积缝隙） */
+    const bw = maxX - minX + 1, bh = maxY - minY + 1;
+    if (Math.max(bw, bh) / Math.max(1, Math.min(bw, bh)) > 2.2) continue;
+    if (area / (bw * bh) < 0.6) continue;
+    if (Math.max(bw, bh) > Math.max(w, h) * 0.08) continue;
 
     /* 外环暗色占比（膨胀 3px 的环）；用 Set 判定成员，避免 O(n²) 卡顿 */
     const memberSet = new Set(members);
@@ -1011,7 +1020,7 @@ export function restoreLostDetails(svgText, imgData, opts = {}) {
 
   if (!found.length) return svgText;
 
-  /* 与输出已有图元去重：同色且中心接近的跳过 */
+  /* 解析 SVG（用于渲染比对与插入补点） */
   let doc;
   try {
     doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
@@ -1019,38 +1028,51 @@ export function restoreLostDetails(svgText, imgData, opts = {}) {
   if (doc.querySelector('parsererror')) return svgText;
   const svg = doc.documentElement;
 
-  const parseFill = s => {
-    const m = /^#([0-9a-f]{6})$/i.exec(String(s || '').trim());
-    if (!m) return null;
-    return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
-  };
-  const existing = [];
-  svg.querySelectorAll('path').forEach(p => {
-    const rgb = parseFill(p.getAttribute('fill'));
-    if (!rgb) return;
-    const nums = (p.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g) || [];
-    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-    for (let i = 0; i + 1 < nums.length; i += 2) {
-      const x = +nums[i], y = +nums[i + 1];
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
+  /* 把「补点前」的 SVG 渲染成像素图（用 Canvas Path2D 直接绘制，
+     不依赖 Image 加载 SVG——后者在部分环境会静默失败）。
+     用途：与源图逐像素比对，判断元素是否真被引擎吞掉。 */
+  let probe = null;
+  try {
+    const pc = document.createElement('canvas');
+    pc.width = w; pc.height = h;
+    const pctx = pc.getContext('2d', { willReadFrequently: true });
+    pctx.fillStyle = '#ffffff';
+    pctx.fillRect(0, 0, w, h);
+    let drawn = 0;
+    for (const el of doc.querySelectorAll('path')) {
+      const d = el.getAttribute('d');
+      if (!d) continue;
+      const fill = el.getAttribute('fill');
+      if (!fill || fill === 'none') continue;
+      try {
+        pctx.fillStyle = fill;
+        pctx.fill(new Path2D(d), 'evenodd');
+        drawn++;
+      } catch (e) { /* 单条路径失败不影响整体 */ }
     }
-    /* 排除「背景层」（覆盖面积 > 图面 30% 的图元）：它的 bbox 覆盖整图，
-       会让所有同色小元素的去重判断误命中（实测：白色背景层导致眼白被跳过） */
-    if ((maxX - minX) * (maxY - minY) > w * h * 0.3) return;
-    existing.push({ rgb, minX, minY, maxX, maxY });
-  });
+    if (drawn > 0) probe = pctx.getImageData(0, 0, w, h);
+  } catch (e) {
+    probe = null;   // 渲染失败则不做去重（宁可少补，避免误补）
+  }
 
   const hex = a => '#' + a.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
   const K = 0.5522847498;
   let added = 0;
   for (const f of found) {
-    const dup = existing.some(e => {
-      const dc = Math.abs(e.rgb[0] - f.rgb[0]) + Math.abs(e.rgb[1] - f.rgb[1]) + Math.abs(e.rgb[2] - f.rgb[2]);
-      if (dc > 24) return false;
-      return f.cx >= e.minX - 2 && f.cx <= e.maxX + 2 && f.cy >= e.minY - 2 && f.cy <= e.maxY + 2;
-    });
-    if (dup) continue;
+    /* 去重判据：比较「输出渲染」与「源图」在同一位置的像素差异——
+       差异小 ⇒ 该元素已被还原（或与背景同色而不可见，无需补）；
+       差异大 ⇒ 元素确实被引擎吞掉了（如眼白位置输出成了黑眼球） ⇒ 补画。
+       这比"检查输出颜色是否接近目标色"可靠：后者无法区分「白点已输出」与
+       「露出白色背景」（两者渲染出来都是白的）。 */
+    if (probe) {
+      const px = Math.max(0, Math.min(w - 1, Math.round(f.cx)));
+      const py = Math.max(0, Math.min(h - 1, Math.round(f.cy)));
+      const oi = (py * w + px) * 4;
+      const d = Math.abs(probe.data[oi] - data[oi])
+        + Math.abs(probe.data[oi + 1] - data[oi + 1])
+        + Math.abs(probe.data[oi + 2] - data[oi + 2]);
+      if (d <= existingTol) continue;
+    }
     const rx = f.rx, ry = f.ry, cx = f.cx, cy = f.cy;
     const hx = rx * K, hy = ry * K;
     const d = 'M' + (cx + rx).toFixed(2) + ',' + cy.toFixed(2)
