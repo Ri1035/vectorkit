@@ -1363,6 +1363,30 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
   </section>
 
 </div>
+<script>
+/* 页面级看门狗：模块脚本（app.js 及依赖）在弱网下加载慢或失败时，
+   给出明确反馈而不是让状态栏静默停在「引擎加载中…」。
+   app.js 成功执行后会置 window.__vkBooted = true，看门狗随即失效。 */
+window.__vkBooted = false;
+(function () {
+  var el = function () { return document.getElementById('engineText'); };
+  var chip = function () { return document.getElementById('engineChip'); };
+  setTimeout(function () {
+    if (window.__vkBooted) return;
+    var t = el();
+    if (t && /加载中/.test(t.textContent)) t.textContent = '页面资源加载中…（网络较慢，请稍候）';
+  }, 8000);
+  setTimeout(function () {
+    if (window.__vkBooted) return;
+    var t = el();
+    if (t && /加载/.test(t.textContent)) {
+      t.textContent = '加载缓慢：网络受限，点此刷新重试';
+      var c = chip();
+      if (c) { c.classList.add('err'); c.style.cursor = 'pointer'; c.onclick = function () { location.reload(); }; }
+    }
+  }, 25000);
+})();
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

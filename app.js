@@ -4,7 +4,6 @@
 import { toLegacySvg } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
-import { svgToDxf } from './dxf-export.js';
 import { mergeSameColorPaths } from './merge-paths.js';
 import { preprocess, countColors } from './preprocess.js';
 
@@ -1445,8 +1444,16 @@ $('#dlEps').addEventListener('click', () => {
   exportCmykEps(S1.svg, (S1.outName || 'vector').replace(/\.svg$/, '') + '-cmyk.eps', '#epsStatus', '#epsTransparent');
 });
 
-$('#dlDxf').addEventListener('click', () => {
+$('#dlDxf').addEventListener('click', async () => {
   if (!S1.svg) return;
+  /* 动态加载：DXF 为低频功能，不占用首屏模块图 */
+  let svgToDxf;
+  try {
+    ({ svgToDxf } = await import('./dxf-export.js'));
+  } catch (e) {
+    alert('DXF 模块加载失败：' + (e.message || e));
+    return;
+  }
   const r = svgToDxf(S1.svg);
   if (!r.dxf) {
     alert('DXF 导出失败：' + (r.warnings.join('；') || '无可用路径'));
@@ -2240,11 +2247,17 @@ renderPresets();
 renderParams();
 renderTemplates();
 
+/* 告知看门狗：模块脚本已成功执行 */
+window.__vkBooted = true;
+
 function scheduleWarmup() {
-  setTimeout(() => { warmup(); }, 180);
+  /* 关键：不等 window load。模块图（约 237KB）在弱网下加载慢甚至挂起时，
+     load 事件可能长时间不触发，引擎状态会一直停在「引擎加载中…」。
+     改为 DOM 就绪即开始预热，并把状态反馈交给 warmup 内部。 */
+  setTimeout(() => { warmup(); }, 0);
 }
-if (document.readyState === 'complete') {
-  scheduleWarmup();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', scheduleWarmup, { once: true });
 } else {
-  window.addEventListener('load', scheduleWarmup, { once: true });
+  scheduleWarmup();
 }
