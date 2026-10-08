@@ -235,13 +235,19 @@ export function countColors(src) {
  * @param {number} maxColors 目标色数（2–64），超出范围则不处理
  * @returns {{imageData: ImageData, colorsBefore: number, colorsAfter: number}}
  */
-export function quantizeMedianCut(src, maxColors) {
+export function quantizeMedianCut(src, maxColors, opts = {}) {
+  /* splitMode: 'range' = 按色域中位切分（推荐，保证颜色多样性，适合纯色块插画）
+   *            'count' = 按像素数中位切分（旧行为，背景占比大时会挤掉前景色）
+   * protectBackground: 占比 > 40% 的主导色锁定为独立簇，不参与切割竞争
+   * weightCount: 像素数开方加权，降低大面积色块对簇分配的支配 */
+  const { splitMode = 'range', protectBackground = true, weightCount = true } = opts;
   const { width: w, height: h } = src;
   const p = src.data;
 
   if (!maxColors || maxColors < 2 || maxColors > 64) {
     return { imageData: src, colorsBefore: 0, colorsAfter: 0 };
   }
+  const wt = n => (weightCount ? Math.sqrt(n) : n);
 
   /* --- 直方图：每个色箱的像素数 + RGB 累加 --- */
   const count = new Float64Array(BINS);
@@ -274,13 +280,11 @@ export function quantizeMedianCut(src, maxColors) {
       const v = dec(idx, ch);
       if (v < lo) lo = v;
       if (v > hi) hi = v;
-      total += count[idx];
+      total += wt(count[idx]);
     }
     return { list, ch, range: hi - lo, total, lo, hi };
   };
 
-  const boxes = [makeBox(bins, 0)];
-  // 计算每个轴的跨度，选最大者作为切割轴
   const rank = box => {
     let best = -1, bestRange = -1;
     for (let ch = 0; ch < 3; ch++) {
@@ -300,6 +304,26 @@ export function quantizeMedianCut(src, maxColors) {
     return box;
   };
 
+  /* 背景保护：找出占比 > 40% 的主导色箱，锁定为独立簇 */
+  const boxes = [];
+  let cutBins = bins;
+  if (protectBackground) {
+    let totalPx = 0, topIdx = -1, topPx = 0;
+    for (const idx of bins) {
+      totalPx += count[idx];
+      if (count[idx] > topPx) { topPx = count[idx]; topIdx = idx; }
+    }
+    if (totalPx > 0 && topPx / totalPx > 0.4) {
+      boxes.push(makeBox([topIdx], 0));
+      cutBins = bins.filter(idx => idx !== topIdx);
+    }
+  }
+  cutBins = cutBins.slice();
+  const cutBox = makeBox(cutBins, 0);
+  if (cutBins.length) boxes.push(rank(cutBox));
+  // 计算每个轴的跨度，选最大者作为切割轴
+
+
   while (boxes.length < maxColors) {
     // 选当前最该切的簇：跨度最大且可切（元素 > 1）
     let target = -1, targetScore = -1;
@@ -314,15 +338,28 @@ export function quantizeMedianCut(src, maxColors) {
     const ch = box.ch;
     box.list.sort((a, b) => dec(a, ch) - dec(b, ch));
 
-    // 按像素数中位分割
-    let acc = 0, half = box.total / 2, cut = 0;
-    for (let i = 0; i < box.list.length - 1; i++) {
-      acc += count[box.list[i]];
-      if (acc >= half) { cut = i + 1; break; }
+    /* 切割位置：
+     *   range 模式（默认）取颜色跨度中点——保证两侧颜色多样性，
+     *     纯色块插画（大量背景 + 少量前景）不会被背景像素数带偏；
+     *   count 模式（旧行为）按像素数中位切分 */
+    let cut = 0;
+    if (splitMode === 'range') {
+      const lo = dec(box.list[0], ch);
+      const hi = dec(box.list[box.list.length - 1], ch);
+      const mid = (lo + hi) / 2;
+      let i = 0;
+      while (i < box.list.length - 1 && dec(box.list[i], ch) < mid) i++;
+      cut = i > 0 ? i : 1;
+      if (cut >= box.list.length) cut = box.list.length - 1;
+    } else {
+      let acc = 0, half = box.total / 2;
+      for (let i = 0; i < box.list.length - 1; i++) {
+        acc += wt(count[box.list[i]]);
+        if (acc >= half) { cut = i + 1; break; }
+      }
+      if (cut <= 0) cut = 1;
+      if (cut >= box.list.length) cut = box.list.length - 1;
     }
-    if (cut <= 0) cut = 1;
-    if (cut >= box.list.length) cut = box.list.length - 1;
-
     const left = box.list.slice(0, cut);
     const right = box.list.slice(cut);
     boxes.splice(target, 1, rank(makeBox(left, 0)), rank(makeBox(right, 0)));

@@ -28,6 +28,19 @@ const ENGINES = {
   svgo: { mod: null, loading: null }
 };
 
+/* 引擎加载超时：网络抖动/代理拦截时避免永久挂起（曾表现为"卡在加载中"） */
+const ENGINE_TIMEOUT = 20000;
+
+function withTimeout(promise, label, ms = ENGINE_TIMEOUT) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label + ' 加载超时（' + Math.round(ms / 1000) + 's）')), ms);
+    })
+  ]);
+}
+
 function loadEngine(name) {
   const slot = ENGINES[name];
   if (slot.mod) return Promise.resolve(slot.mod);
@@ -45,7 +58,11 @@ function loadEngine(name) {
         slot.mod = m;
       } else if (name === 'resvg') {
         const m = await import('./vendor/resvg.mjs');
-        const resp = await fetch('./vendor/resvg_bg.wasm');
+        /* AbortController：超时真正中断下载（2.4MB，弱网下最易挂起） */
+        const ac = new AbortController();
+        const to = setTimeout(() => ac.abort(), ENGINE_TIMEOUT);
+        const resp = await fetch('./vendor/resvg_bg.wasm', { signal: ac.signal })
+          .finally(() => clearTimeout(to));
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const buf = await resp.arrayBuffer();
         await m.initWasm(new Response(buf, { headers: { 'Content-Type': 'application/wasm' } }));
@@ -63,22 +80,21 @@ function loadEngine(name) {
   return slot.loading;
 }
 
+/* 启动只预加载默认引擎（VTracer，653KB）；
+   resvg 2.4MB / svgo 786KB 改在用户真正用到时加载（首屏负载降低约 86%） */
 async function warmup() {
-  const names = [];
-  const results = await Promise.allSettled([
-    loadEngine('vtracer').then(() => names.push('VTracer')),
-    loadEngine('potrace').then(() => names.push('Potrace')),
-    loadEngine('resvg').then(() => names.push('resvg')),
-    loadEngine('svgo').then(() => names.push('SVGO'))
-  ]);
-  const okCount = results.filter(r => r.status === 'fulfilled').length;
-  const narrow = window.matchMedia('(max-width: 520px)').matches;
-  if (okCount === 0) {
-    setChip('err', '引擎加载失败');
-  } else if (narrow) {
-    setChip('ready', '引擎就绪');
-  } else {
-    setChip('ready', '引擎就绪 · ' + names.join(' + '));
+  setChip('busy', '引擎加载中…');
+  try {
+    await withTimeout(loadEngine('vtracer'), 'VTracer');
+    setChip('ready', 'VTracer 就绪');
+  } catch (e) {
+    console.warn(e);
+    setChip('err', '引擎加载失败，点此重试');
+    const chip = $('#engineChip');
+    if (chip) {
+      chip.style.cursor = 'pointer';
+      chip.onclick = () => { chip.onclick = null; chip.style.cursor = ''; warmup(); };
+    }
   }
 }
 
@@ -399,6 +415,10 @@ $$('.tab').forEach(tab => {
     });
     $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + target));
     try { S1.lastKey = ''; } catch (e) { /* 尚未初始化 */ }
+    /* 按需预加载：切到对应页面时后台开始下载引擎，用户操作时已就绪 */
+    if (target === 'v2r') loadEngine('resvg').catch(() => {});
+    else if (target === 'opt') loadEngine('svgo').catch(() => {});
+    else if (target === 'r2v') loadEngine('vtracer').catch(() => {});
   });
 });
 
@@ -969,6 +989,13 @@ $('#engineSeg').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b || b.disabled) return;
   S1.engine = b.dataset.engine;
+  /* 按需加载：首次切到该引擎时下载（Potrace 仅 74KB，VTracer 已预热） */
+  loadEngine(S1.engine).catch(err => {
+    console.warn('引擎加载失败', err);
+    setChip('err', '引擎加载失败，点此重试');
+    const chip = $('#engineChip');
+    if (chip) { chip.style.cursor = 'pointer'; chip.onclick = () => { chip.onclick = null; chip.style.cursor = ''; warmup(); }; }
+  });
   S1.preset = Object.keys(PRESETS[S1.engine])[0];
   S1.lastKey = '';
   $$('#engineSeg button').forEach(x => {
