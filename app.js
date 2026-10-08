@@ -1,7 +1,7 @@
 /* KOKA-VectorKit —— 纯前端矢量转换器
  * 引擎在主线程按需加载（见下方「引擎（懒加载）」章节） */
 
-import { toLegacySvg } from './svg-compat.js';
+import { toLegacySvg, restoreBackgroundColor } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
 import { mergeSameColorPaths } from './merge-paths.js';
@@ -858,7 +858,7 @@ async function runVectorize(force) {
        直接减少送入引擎的颜色种类，从源头抑制色块数量 */
     prog.stage(14, '图像预处理');
     let pw = S1.w, ph = S1.h, rgba;
-    let upsampled = 0;
+    let upsampled = 0, bgShift = null;
     if (preOpts.active) {
       await yieldFrame();
       const pre = preprocess(S1.imageData, {
@@ -869,6 +869,7 @@ async function runVectorize(force) {
       pw = pre.stats.width;
       ph = pre.stats.height;
       upsampled = pre.stats.upsampled || 0;
+      bgShift = pre.stats.bgShift || null;
       rgba = new Uint8Array(pre.imageData.data);
     } else {
       $(PRE_UI.status).classList.add('hidden');
@@ -921,6 +922,10 @@ async function runVectorize(force) {
     }
 
     prog.stage(96, '整理输出');
+    /* 内部同色保护的收尾：把偏移过的背景色改回原色（矢量阶段同色不影响显示） */
+    if (bgShift) {
+      svgText = restoreBackgroundColor(svgText, bgShift.from, bgShift.shade);
+    }
     if (upsampled > 1) {
       /* 描摹在上采样网格上进行：SVG 的 width/height 强制回写为原始尺寸，
          viewBox 保持放大网格（浏览器自动等比缩放显示/打印尺寸）；

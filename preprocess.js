@@ -396,6 +396,97 @@ export function quantizeMedianCut(src, maxColors, opts = {}) {
   return { imageData: out, colorsBefore: bins.length, colorsAfter: boxes.length };
 }
 
+
+/* ============================ 5. 内部同色保护 ============================ */
+
+/**
+ * 内部同色保护：当「前景元素」与「背景」颜色相同时（典型：白色插画的眼白高光、
+ * 图案里的白点），描摹引擎会把该颜色整体当作背景层省略，导致这些前景元素丢失。
+ *
+ * 做法：连通域分析找出「与图像边缘相连」的背景区域，把它的颜色轻微偏移
+ * （如纯白 #FFFFFF → #FCFCFC）；被其他颜色包围的同色区域（眼白、内部白点）
+ * 保持原色——于是两者成为不同色层，内部元素得以保留。
+ *
+ * @param {ImageData} src
+ * @param {Object} [opts]
+ * @param {number} [opts.tolerance=14] 与背景色的通道容差
+ * @param {number} [opts.shade=3] 背景色偏移量
+ * @returns {{imageData: ImageData, changed: number, bg: number[]|null}}
+ */
+export function protectInteriorSameColor(src, opts = {}) {
+  /* 两个关键参数（互为约束，改动请先读这里）：
+   *   tolerance —— flood fill 的「同色」判定容差。必须**小于**「背景色与前景同色区的色差」，
+   *                否则前景（如眼白高光，与背景仅差 7）会被误判成背景一起被偏移掉，保护失效。
+   *               （实测：Bon Cho 图背景 248 / 眼白 255，故用 4）
+   *   shade     —— 背景色偏移量。必须**明显大于**引擎的层间差异阈值（layerDifference 16）：
+   *                实测 16 恰好临界会被引擎吞掉，30 才稳定分层。偏移后的背景色会在
+   *                输出阶段由 restoreBackgroundColor 还原回原色，用户无感知。 */
+  const { tolerance = 4, shade = 30 } = opts;
+  const { width: w, height: h, data } = src;
+  if (w < 8 || h < 8) return { imageData: src, changed: 0, bg: null };
+
+  /* 1) 从四边取样确定背景色
+   *    注意：必须用**精确 RGB 众数**，不能用色箱中心——箱中心与实际像素差可达 7，
+   *    会超过下面的 tolerance 导致背景识别失败（实测踩过这个坑）。 */
+  const hist = new Map();
+  const sample = (x, y) => {
+    const i = (y * w + x) * 4;
+    if (data[i + 3] < 8) return;
+    const k = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    hist.set(k, (hist.get(k) || 0) + 1);
+  };
+  for (let x = 0; x < w; x += 3) { sample(x, 0); sample(x, h - 1); }
+  for (let y = 0; y < h; y += 3) { sample(0, y); sample(w - 1, y); }
+  let bgKey = -1, bgHit = 0;
+  for (const [k, c] of hist) if (c > bgHit) { bgHit = c; bgKey = k; }
+  if (bgKey < 0) return { imageData: src, changed: 0, bg: null };
+  const bgR = (bgKey >> 16) & 255;
+  const bgG = (bgKey >> 8) & 255;
+  const bgB = bgKey & 255;
+
+  /* 2) 从四边 flood fill：与边缘相连的同色像素 = 背景 */
+  const near = i => data[i + 3] >= 8
+    && Math.abs(data[i] - bgR) <= tolerance
+    && Math.abs(data[i + 1] - bgG) <= tolerance
+    && Math.abs(data[i + 2] - bgB) <= tolerance;
+
+  const isBg = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+  let qh = 0, qt = 0;
+  const seed = (x, y) => {
+    const pi = y * w + x;
+    if (isBg[pi]) return;
+    if (!near(pi * 4)) return;
+    isBg[pi] = 1; queue[qt++] = pi;
+  };
+  for (let x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1); }
+  for (let y = 0; y < h; y++) { seed(0, y); seed(w - 1, y); }
+  while (qh < qt) {
+    const pi = queue[qh++];
+    const px = pi % w, py = (pi - px) / w;
+    if (px > 0) { const n = pi - 1; if (!isBg[n] && near(n * 4)) { isBg[n] = 1; queue[qt++] = n; } }
+    if (px < w - 1) { const n = pi + 1; if (!isBg[n] && near(n * 4)) { isBg[n] = 1; queue[qt++] = n; } }
+    if (py > 0) { const n = pi - w; if (!isBg[n] && near(n * 4)) { isBg[n] = 1; queue[qt++] = n; } }
+    if (py < h - 1) { const n = pi + w; if (!isBg[n] && near(n * 4)) { isBg[n] = 1; queue[qt++] = n; } }
+  }
+
+  /* 3) 背景像素颜色轻微偏移（向中间灰方向），内部同色区域保持原样 */
+  const out = cloneData(src);
+  const dp = out.data;
+  const shift = (v) => (v >= 128 ? Math.max(0, v - shade) : Math.min(255, v + shade));
+  let changed = 0;
+  for (let pi = 0; pi < w * h; pi++) {
+    if (!isBg[pi]) continue;
+    const i = pi * 4;
+    dp[i] = shift(dp[i]);
+    dp[i + 1] = shift(dp[i + 1]);
+    dp[i + 2] = shift(dp[i + 2]);
+    changed++;
+  }
+  if (!changed) return { imageData: src, changed: 0, bg: [bgR, bgG, bgB] };
+  return { imageData: out, changed, bg: [bgR, bgG, bgB] };
+}
+
 /* ============================ 主入口 ============================ */
 
 /**
@@ -411,7 +502,7 @@ export function quantizeMedianCut(src, maxColors, opts = {}) {
  * @returns {{imageData: ImageData, stats: Object}}
  */
 export function preprocess(src, opts = {}) {
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, onProgress } = opts;
+  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = true, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
@@ -446,6 +537,17 @@ export function preprocess(src, opts = {}) {
     steps.push('保边平滑 ' + smooth + ' 档');
   }
 
+  let bgShift = null;
+  if (interiorProtect) {
+    onProgress?.(76, '内部同色保护');
+    const ip = protectInteriorSameColor(img, {});
+    if (ip.changed > 0) {
+      img = ip.imageData;
+      bgShift = { from: ip.bg, shade: 30 };
+      steps.push('内部同色保护');
+    }
+  }
+
   if (maxColors >= 2) {
     onProgress?.(85, '颜色量化');
     const q = quantizeMedianCut(img, maxColors);
@@ -466,6 +568,7 @@ export function preprocess(src, opts = {}) {
       colorsAfter: colorAfterQuantize,
       width: img.width,
       height: img.height,
+      bgShift,
       rawWidth: src.width,
       rawHeight: src.height,
       upsampled,

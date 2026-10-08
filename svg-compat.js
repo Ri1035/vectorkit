@@ -249,3 +249,45 @@ export function toLegacySvg(svgText) {
   if (!/^<\?xml/.test(out)) out = '<?xml version="1.0" encoding="UTF-8"?>\n' + out;
   return out;
 }
+
+
+/**
+ * 背景色还原：内部同色保护会把「与图像边缘相连的背景」轻微偏移颜色，
+ * 使被同色背景包围的前景元素（眼白高光、内部白点）成为独立色层而被保留。
+ * 矢量化完成后，把偏移后的背景色块改回原色（矢量阶段同色不影响显示，
+ * 但能保证用户拿到的背景色与原始素材一致）。
+ *
+ * @param {string} svgText
+ * @param {number[]} bg    原始背景色 [r,g,b]
+ * @param {number} shade   偏移量（与预处理一致）
+ * @param {number} [tol=6] 颜色匹配容差
+ * @returns {string}
+ */
+export function restoreBackgroundColor(svgText, bg, shade, tol = 6) {
+  if (!bg || !shade) return svgText;
+  const shifted = bg.map(v => (v >= 128 ? Math.max(0, v - shade) : Math.min(255, v + shade)));
+  if (shifted.every((v, i) => v === bg[i])) return svgText;
+  const hex = a => a.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  const target = '#' + hex(shifted), back = '#' + hex(bg);
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  } catch { return svgText; }
+  if (doc.querySelector('parsererror')) return svgText;
+
+  const parse = s => {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(s || '').trim());
+    if (!m) return null;
+    return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
+  };
+  let n = 0;
+  doc.querySelectorAll('[fill]').forEach(el => {
+    const c = parse(el.getAttribute('fill'));
+    if (!c) return;
+    if (Math.abs(c[0] - shifted[0]) <= tol && Math.abs(c[1] - shifted[1]) <= tol && Math.abs(c[2] - shifted[2]) <= tol) {
+      el.setAttribute('fill', back);
+      n++;
+    }
+  });
+  return n ? new XMLSerializer().serializeToString(doc.documentElement) : svgText;
+}
