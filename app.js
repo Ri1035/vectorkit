@@ -4,6 +4,7 @@
 import { toLegacySvg } from './svg-compat.js';
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
+import { svgToDxf } from './dxf-export.js';
 import { mergeSameColorPaths } from './merge-paths.js';
 import { preprocess, countColors } from './preprocess.js';
 
@@ -805,6 +806,7 @@ function showVectorResult(svgText, ms, key) {
 
   $('#dl1').disabled = false;
   $('#dlEps').disabled = false;
+  $('#dlDxf').disabled = false;
   $('#copy1').disabled = false;
 }
 
@@ -932,6 +934,7 @@ function clearS1() {
   $('#run1').disabled = true;
   $('#dl1').disabled = true;
   $('#dlEps').disabled = true;
+  $('#dlDxf').disabled = true;
   $('#copy1').disabled = true;
   $('#viewToggle1').style.display = 'none';
   $('#stats1').classList.add('hidden');
@@ -1413,6 +1416,24 @@ function exportCmykEps(svgText, fileName, statusId, checkboxId) {
 $('#dlEps').addEventListener('click', () => {
   if (!S1.svg) return;
   exportCmykEps(S1.svg, (S1.outName || 'vector').replace(/\.svg$/, '') + '-cmyk.eps', '#epsStatus', '#epsTransparent');
+});
+
+$('#dlDxf').addEventListener('click', () => {
+  if (!S1.svg) return;
+  const r = svgToDxf(S1.svg);
+  if (!r.dxf) {
+    alert('DXF 导出失败：' + (r.warnings.join('；') || '无可用路径'));
+    return;
+  }
+  const blob = new Blob([r.dxf], { type: 'application/dxf' });
+  const url = URL.createObjectURL(blob);
+  const a2 = document.createElement('a');
+  a2.href = url;
+  a2.download = (S1.outName || 'vector').replace(/\.svg$/, '') + '.dxf';
+  a2.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const hint = $('#hint1');
+  if (hint) hint.textContent = 'DXF 已导出：' + r.shapes + ' 条路径 · ' + r.layers + ' 个颜色图层';
 });
 
 $('#copy1').addEventListener('click', async () => {

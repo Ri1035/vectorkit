@@ -517,7 +517,7 @@ function ensureClosed(shape, maxGap = 1) {
  * @returns {Promise<{svg:string, stats:Object|null, warnings:string[]}>}
  */
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -744,7 +744,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
       }
 
       // 锚点简化（含可选的边缘平滑）
-      const pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK);
+      const pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK, circleTol, alignTol);
       anchorsPruned += pruned;
 
       const node = acc.exportSVG({ precision: 2, asString: false });
@@ -783,7 +783,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         if (doFilter && maxSubpathArea(p) < minArea) { drops.add(c); continue; }
 
         if (edgeSmooth > 0) {
-          const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK);
+          const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol);
           anchorsPruned += changed;
           // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
           if (changed > 0) {
@@ -881,7 +881,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
 }
 
 /** 供测试直接调用（内部函数，生产流程不依赖） */
-export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, turnAngleDeg };
+export const __test = { pruneAnchors, dpKeep, dpSimplifyStraightRuns, fitSmoothCurve, fitCircleShapes, snapAxisAlignedEdges, turnAngleDeg };
 
 /** 把各类跳过统计汇总成用户可读的提示 */
 function pushSkipWarnings(warnings, skipped) {  if (skipped.gradient) warnings.push(skipped.gradient + ' 个渐变/图案填充路径已跳过合并');
@@ -1136,6 +1136,49 @@ function resampleSimplify(p, tol, smoothLevel, fitK = 0) {
 }
 
 /**
+ * 直线规整（正交吸附）：把「近似水平/垂直」的直线段吸附为精确的水平/垂直。
+ *
+ * 动机：设计稿里的直线本应是笔直的，但描摹后常带 0.5°–2° 的微小倾斜，
+ * 放大或切割时肉眼可见。对纯直线段（不动曲线段）做轴向对齐即可修正；
+ * 偏差阈值很小（默认 1.5°），避免改变设计上有意倾斜的元素。
+ *
+ * @param {paper.Path} p
+ * @param {number} angleTol 允许吸附的最大角度偏差（度）
+ * @returns {number} 吸附的段数
+ */
+function snapAxisAlignedEdges(p, angleTol = 1.5) {
+  const segs = p.segments;
+  const n = segs.length;
+  if (n < 3) return 0;
+  let changed = 0;
+  for (let i = 0; i < n; i++) {
+    const a = segs[i];
+    const b = segs[(i + 1) % n];
+    if (!p.closed && i === n - 1) break;
+    /* 只处理纯直线段：任一端有句柄说明是曲线段，跳过 */
+    if (!a.handleOut.isZero() || !b.handleIn.isZero()) continue;
+    const dx = b.point.x - a.point.x;
+    const dy = b.point.y - a.point.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 2) continue;
+    const ang = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);   // 0..180
+    const devH = Math.min(ang, 180 - ang);                       // 距水平
+    const devV = Math.abs(90 - ang);                             // 距垂直
+
+    if (devH <= angleTol) {
+      const y = (a.point.y + b.point.y) / 2;
+      a.point.y = y; b.point.y = y;
+      changed++;
+    } else if (devV <= angleTol) {
+      const x = (a.point.x + b.point.x) / 2;
+      a.point.x = x; b.point.x = x;
+      changed++;
+    }
+  }
+  return changed;
+}
+
+/**
  * 几何基元拟合：把「近似圆」的闭合路径替换为标准圆（4 段三次贝塞尔）。
  *
  * 动机：描摹引擎对圆形（眼球、腮红、按钮等）的输出是 N 段折线/短曲线拼接，
@@ -1225,7 +1268,7 @@ function fitCircleShapes(p, tolRatio = 0.02) {
  *     平滑档位 ≥ 2 时改为「重采样 + D-P + 全曲线拟合」，并尝试几何基元拟合（近似圆 → 标准圆）
  * @returns {number} 移除／改动的锚点总数
  */
-function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02) {
+function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5) {
   let count = 0;
   const children = item.className === 'CompoundPath' ? item.children.slice() : [item];
 
@@ -1260,6 +1303,8 @@ function pruneAnchors(item, tol, smoothLevel = 0, fitK = 0, circleTol = 0.02) {
       count += flattenNearStraightCurves(p, tol);
       count += dpSimplifyStraightRuns(p, tol);
     }
+    /* 直线规整：所有档位都做（还原设计稿的笔直边，偏差阈值极小） */
+    count += snapAxisAlignedEdges(p, alignTol);
   }
   return count;
 }
