@@ -5,11 +5,11 @@
   "type": "module",
   "description": "纯前端矢量转换器：位图转 SVG、SVG 转位图与位图、CMYK EPS 导出、SVG 优化压缩、去背景，全部在浏览器本地完成",
   "scripts": {
-    "dev": "node serve.mjs 5188",
-    "start": "node serve.mjs 5188",
-    "build": "node build.mjs",
-    "build:engine": "node build-vtracer.mjs",
-    "deploy": "node deploy.mjs"
+    "dev": "node scripts/serve.mjs 5188",
+    "start": "node scripts/serve.mjs 5188",
+    "build": "node scripts/build.mjs",
+    "build:engine": "node scripts/build-vtracer.mjs",
+    "deploy": "node scripts/deploy.mjs"
   },
   "license": "MIT",
   "dependencies": {

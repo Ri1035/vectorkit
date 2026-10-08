@@ -2,9 +2,10 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
-const root = dirname(fileURLToPath(import.meta.url));
+/* 本脚本位于 scripts/，静态站点根目录为其上一级 */
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.argv[2] || 5188);
 
 const MIME = {

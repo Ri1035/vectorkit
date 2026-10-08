@@ -57,11 +57,23 @@ npm run dev
 
 > 各引擎参数与渲染管线的详细实现见源码，本文不做展开。
 
+## 📚 文档
+
+设计规范、专项方案、技术实现与变更历史统一收录于 [`docs/`](./docs/README.md)：
+
+| 文档 | 内容 |
+| --- | --- |
+| [docs/DESIGN.md](./docs/DESIGN.md) | 界面视觉规范（UI 唯一事实来源） |
+| [docs/PLAN_HIGH_FIDELITY.md](./docs/PLAN_HIGH_FIDELITY.md) | 高清矢量化专项计划与执行进度 |
+| [docs/OPEN_SOURCE_METHODS.md](./docs/OPEN_SOURCE_METHODS.md) | 自研矢量化方案集（6 项算法） |
+| [docs/CHANGELOG.md](./docs/CHANGELOG.md) | 完整版本变更历史 |
+
 ## 修改记录
 
 > 说明：修改记录仅记录文档维护变更，不计入版本更新。
 
 | 日期 | 修改内容 |
 | --- | --- |
+| 2026-10-08 | 仓库整理：文档下沉至 `docs/`、构建脚本归位至 `scripts/`，新增文档索引 |
 | 2026-10-05 | README 精简为项目介绍，补充 topics 标签 |
 | 2026-10-05 | README 美化丰富：补充在线体验与参考来源，完善使用说明 |

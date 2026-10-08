@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+/* 本脚本位于 scripts/，项目根目录为其上一级 */
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkgDir = path.join(root, 'node_modules', '@visioncortex', 'vtracer', 'pkg');
 const srcPath = path.join(pkgDir, 'vtracer_wasm.js');
 const wasmSrc = path.join(pkgDir, 'vtracer_wasm_bg.wasm');

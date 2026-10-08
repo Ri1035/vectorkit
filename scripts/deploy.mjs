@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+/* 本脚本位于 scripts/，项目根目录为其上一级 */
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT = process.env.CF_PROJECT || 'vectorkit';
 const BRANCH = process.env.CF_BRANCH || 'main';
 
@@ -18,7 +19,7 @@ if (missing.length) {
 }
 
 console.log('> 构建 dist/');
-execFileSync(process.execPath, [path.join(root, 'build.mjs')], { stdio: 'inherit', cwd: root });
+execFileSync(process.execPath, [path.join(root, 'scripts', 'build.mjs')], { stdio: 'inherit', cwd: root });
 
 console.log('');
 console.log('> 部署到 Cloudflare Pages（项目 ' + PROJECT + '，分支 ' + BRANCH + '）');
