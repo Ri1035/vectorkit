@@ -422,3 +422,12 @@ CompoundPath（命令数变多）——应以**节点数减少量**为指标
 
 **未做（下一阶段）**：watershed 预设化；引擎 OKLab 量化（`palette`/`maxColors`）接管色块归并；
 暴露 `optimize` / `watershedDetail`；ImageTracer 借鉴项（直角增强、选择性模糊）。
+
+### v4.5（2026-10-12）— P1：分水岭分区 + 输出优化接入 ✅
+
+**落地**：新增「区域感知」预设（`clustering:watershed` + `cutout`）；新增高级参数
+`watershedDetail`（默认 128，仅分水岭时下发）与 `optimize`（默认 0 不下发）。
+
+**验证**：无头 Edge E2E 6 用例全过；`watershedDetail=192` 在高值下**渲染**阶段有延迟，默认保守取 128。
+
+**未做**：`palette`（固定调色板 UI）；ImageTracer 借鉴项（直角增强 / 选择性模糊）。
