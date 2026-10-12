@@ -507,7 +507,7 @@ updateOutputSummaries();
 const PRE_UI = {
   size: '#preSize', denoise: '#preDenoise', smooth: '#preSmooth',
   smoothV: '#preSmoothV', colors: '#preColors', status: '#preStatus', sum: '#sumPre',
-  upsample: '#preUpsample'
+  res: '#preRes'
 };
 
 function collectPreOptions() {
@@ -515,11 +515,14 @@ function collectPreOptions() {
   const colors = parseInt($(PRE_UI.colors).value, 10) || 0;
   const denoise = $(PRE_UI.denoise).checked;
   const smooth = parseInt($(PRE_UI.smooth).value, 10) || 0;
-  const upsampleEl = $(PRE_UI.upsample);
-  const upsample = upsampleEl ? upsampleEl.checked : false;
+  /* 描摹分辨率：'auto' = 旧行为（短边 <800px 自动 ×2）；'2'/'3' = 强制倍数；'0' = 关闭 */
+  const resEl = $(PRE_UI.res);
+  const resRaw = resEl ? resEl.value : 'auto';
+  const upsample = resRaw === 'auto';
+  const upsampleFactor = resRaw === 'auto' || resRaw === '0' ? 0 : (parseInt(resRaw, 10) || 0);
   return {
-    maxSide: size, denoise, smooth, maxColors: colors, upsample,
-    active: !!size || denoise || !!smooth || colors >= 2 || upsample
+    maxSide: size, denoise, smooth, maxColors: colors, upsample, upsampleFactor,
+    active: !!size || denoise || !!smooth || colors >= 2 || upsample || upsampleFactor >= 2
   };
 }
 
@@ -527,7 +530,8 @@ function collectPreOptions() {
 function updatePreSummary() {
   const o = collectPreOptions();
   const parts = [o.maxSide ? o.maxSide + 'px' : '原始尺寸'];
-  if (o.upsample) parts.push('小图上采样');
+  if (o.upsampleFactor >= 2) parts.push('描摹 ×' + o.upsampleFactor);
+  else if (o.upsample) parts.push('描摹 自动');
   if (o.denoise) parts.push('去噪');
   if (o.smooth) parts.push('平滑' + o.smooth);
   parts.push(o.maxColors >= 2 ? o.maxColors + ' 色' : '不限色');
@@ -552,7 +556,7 @@ $(PRE_UI.smooth).addEventListener('input', e => {
   updatePreSummary();
   S1.lastKey = '';
 });
-[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise, PRE_UI.upsample].forEach(sel => {
+[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise, PRE_UI.res].forEach(sel => {
   const el = $(sel);
   if (!el) return;
   el.addEventListener('change', () => {
@@ -1168,7 +1172,7 @@ function applyTemplate(tpl) {
     setCtlCheck('#preDenoise', tpl.pre.denoise);
     setCtlValue('#preSmooth', tpl.pre.smooth, 'input');
     setCtlValue('#preColors', tpl.pre.colors, 'change');
-    setCtlCheck('#preUpsample', tpl.pre.upsample);
+    setCtlValue('#preRes', tpl.pre.upsample ? 'auto' : '0', 'change');
   }
   if (tpl.post) {
     setCtlCheck('#mergeOn', tpl.post.merge);

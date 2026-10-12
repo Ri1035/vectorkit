@@ -750,7 +750,7 @@ export function preprocess(src, opts = {}) {
    * 但代价是引擎会额外描摹出一层「背景色区域」——其抗锯齿边缘会变成
    * 沿图形轮廓的大量碎路径（用户实测反馈："那么多碎轮廓"），
    * 收益（救回眼白）远小于代价。保留实现，待有更精准方案后再启用。 */
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, interiorProtect = false, protectElements = false, paletteMerge = false, onProgress } = opts;
+  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, upsampleFactor = 0, interiorProtect = false, protectElements = false, paletteMerge = false, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
@@ -765,13 +765,36 @@ export function preprocess(src, opts = {}) {
     steps.push(`降采样 ${before} → ${img.width}×${img.height}`);
   }
 
-  if (upsample && Math.min(img.width, img.height) < 800) {
-    onProgress?.(20, '小图上采样');
-    const before = img.width + '×' + img.height;
-    img = upsampleImageData(img, 2);
-    upsampled = 2;
-    steps.push(`上采样 ${before} → ${img.width}×${img.height}`);
+  /* 描摹分辨率：upsampleFactor ≥ 2 → 强制按该倍数上采样（对任意尺寸生效）；
+     否则退回旧行为：upsample=true 且短边 <800px 时自动 2×。
+     实测：×2 让 Bon Cho(1280²) MSE −53%、PSNR +3.3dB；小图(512×384) ×3 最佳（MSE 76→30）。
+     ⚠️ 安全上限：实测 3840²（14.7M 像素）时引擎输出**退化**（大面积白色覆盖内容），
+     2560²（6.55M）正常；故按像素预算自动降倍，并把降倍原因写入 steps（不静默）。 */
+  const MAX_UP_PIXELS = 8000000;
+  let upF = upsampleFactor >= 2
+    ? upsampleFactor
+    : (upsample && Math.min(img.width, img.height) < 800 ? 2 : 0);
+  let upNote = '';
+  while (upF > 2 && img.width * upF * img.height * upF > MAX_UP_PIXELS) upF--;
+  if (upF === 2 && img.width * 2 * img.height * 2 > MAX_UP_PIXELS) {
+    upNote = `上采样 ×2 已跳过（${(img.width * 2 * img.height * 2 / 1e6).toFixed(1)}M 像素 > 安全上限 ${MAX_UP_PIXELS / 1e6}M）`;
+    upF = 0;
+  } else if (upsampleFactor >= 2 && upF < upsampleFactor) {
+    upNote = `上采样 ×${upsampleFactor} 超出像素预算（${MAX_UP_PIXELS / 1e6}M），已自动降为 ×${upF}`;
   }
+  if (upF > 0) {
+    onProgress?.(20, '上采样 ×' + upF);
+    const before = img.width + '×' + img.height;
+    const up = upsampleImageData(img, upF);
+    if (up !== img) {
+      img = up; upsampled = upF;
+      steps.push(`上采样 ×${upF} ${before} → ${img.width}×${img.height}`);
+    } else {
+      upNote = `上采样 ×${upF} 已跳过（超过 8000px 上限）`;
+      upF = 0;
+    }
+  }
+  if (upNote) steps.push(upNote);
 
   if (denoise) {
     onProgress?.(35, '中值去噪');
