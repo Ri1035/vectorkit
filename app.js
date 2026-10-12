@@ -621,13 +621,11 @@ const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
 const PRESETS = {
   vtracer: {
     logo:   { name: 'Logo 图标', desc: '扁平色块，边界锐利', opts: { clustering: 'color-cluster', hierarchical: 'stacked', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    seamless: { name: '无缝色块', desc: '相邻色块共用边界，无边缝', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', simplify: 1, pathPrecision: 2 } },
-    smooth: { name: '平滑曲线', desc: '最少节点，边界更顺', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 10, colorPrecision: 6, layerDifference: 16, cornerThreshold: 55, lengthThreshold: 4, maxIterations: 10, mode: 'spline', simplify: 1.5, pathPrecision: 2 } },
-    watershed: { name: '区域感知', desc: '分水岭分区，贴物体边界', opts: { clustering: 'watershed', watershedDetail: 128, hierarchical: 'cutout', filterSpeckle: 10, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', simplify: 1, pathPrecision: 2 } },
     photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1, hierarchical: 'stacked' } },
-    line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2, simplify: 0 } },
+    line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0, simplify: 0 } }
+    pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } },
+    vmde:   { name: 'vmde', desc: '无缝共用边界 + 曲线简化（实验档）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', simplify: 1, filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 2 } }
   },
   potrace: {
     sharp:  { name: '锐利线条', desc: '拐角保留，几何图形', opts: { turdsize: 2, alphamax: 0, opticurve: 1, opttolerance: 0.2, extractcolors: 0, turnpolicy: 4 } },
@@ -660,7 +658,7 @@ const ADV = {
     { key: 'mode', label: '曲线模式', type: 'select', options: [['spline', '平滑样条'], ['polygon', '多边形'], ['pixel', '像素不简化']] },
     { key: 'colorPrecision', label: '颜色精度', type: 'range', min: 1, max: 8, step: 1, def: 6 },
     { key: 'pathPrecision', label: '路径精度', type: 'range', min: 0, max: 8, step: 1, def: 2 },
-    { key: 'simplify', label: '曲线简化容差（0 关闭，推荐 1–2）', type: 'range', min: 0, max: 5, step: 0.5, def: 1 },
+    { key: 'simplify', label: '曲线简化容差（0 关闭；vmde 档为 1）', type: 'range', min: 0, max: 5, step: 0.5, def: 0 },
     { key: 'watershedDetail', label: '分水岭细节（仅分区=分水岭时生效）', type: 'range', min: 16, max: 512, step: 16, def: 128 },
     { key: 'optimize', label: '输出优化（0 关 / 1 量化清理 / 2 加缩写）', type: 'range', min: 0, max: 2, step: 1, def: 0 }
   ],
