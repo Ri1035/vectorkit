@@ -17,6 +17,7 @@
 | [SMOOTHING_PLAN.md](./SMOOTHING_PLAN.md) | 矢量输出平滑方案（v2.2 提案）：细节保留 + 减少锯齿 | 已并入主线 |
 | [OPTIMIZATION_EDGE_SEPARATION.md](./OPTIMIZATION_EDGE_SEPARATION.md) | 平滑边缘 & 色块隔离：多引擎源码拆解 + vectorkit 结合优化方案 | 待实施 |
 | [QUALITY_VS_TIME.md](./QUALITY_VS_TIME.md) | 为什么转得快？「加时间」有用吗 —— 耗时/质量实测与档位设计 | 已实测 |
+| [COMPARISON_DESKTOP_VS_WEB.md](./COMPARISON_DESKTOP_VS_WEB.md) | 对照文档：Vector Magic 桌面版（软件） vs vectorkit（Web 应用） | 持续更新 |
 | [OPTIMIZATION_PLAN.md](./OPTIMIZATION_PLAN.md) | 竞品拆解（Vector Magic 桌面版）后的优化计划与结论 | 参考 |
 
 ## 🔬 技术实现
