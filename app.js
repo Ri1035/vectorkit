@@ -621,10 +621,12 @@ const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
 const PRESETS = {
   vtracer: {
     logo:   { name: 'Logo 图标', desc: '扁平色块，边界锐利', opts: { clustering: 'color-cluster', hierarchical: 'stacked', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    seamless: { name: '无缝色块', desc: '相邻色块共用边界，无边缝', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', simplify: 1, pathPrecision: 2 } },
+    smooth: { name: '平滑曲线', desc: '最少节点，边界更顺', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 10, colorPrecision: 6, layerDifference: 16, cornerThreshold: 55, lengthThreshold: 4, maxIterations: 10, mode: 'spline', simplify: 1.5, pathPrecision: 2 } },
     photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1, hierarchical: 'stacked' } },
-    line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2, simplify: 0 } },
     poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } }
+    pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0, simplify: 0 } }
   },
   potrace: {
     sharp:  { name: '锐利线条', desc: '拐角保留，几何图形', opts: { turdsize: 2, alphamax: 0, opticurve: 1, opttolerance: 0.2, extractcolors: 0, turnpolicy: 4 } },
@@ -653,11 +655,11 @@ const SCHEMA = {
 const ADV = {
   vtracer: [
     { key: 'clustering', label: '分区算法', type: 'select', options: [['color-cluster', '色彩聚类（通用）'], ['bw', '黑白二值'], ['watershed', '分水岭']] },
-    { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠（无接缝）'], ['cutout', '镂空']] },
+    { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠（上层覆盖下层）'], ['cutout', '无缝共用边界（马赛克）']] },
     { key: 'mode', label: '曲线模式', type: 'select', options: [['spline', '平滑样条'], ['polygon', '多边形'], ['pixel', '像素不简化']] },
     { key: 'colorPrecision', label: '颜色精度', type: 'range', min: 1, max: 8, step: 1, def: 6 },
     { key: 'pathPrecision', label: '路径精度', type: 'range', min: 0, max: 8, step: 1, def: 2 },
-    { key: 'simplify', label: '曲线简化容差（0 关闭）', type: 'range', min: 0, max: 5, step: 0.5, def: 0 }
+    { key: 'simplify', label: '曲线简化容差（0 关闭，推荐 1–2）', type: 'range', min: 0, max: 5, step: 0.5, def: 1 }
   ],
   potrace: [
     { key: 'turnpolicy', label: '拐角策略', type: 'select', options: [['4', '少数派（推荐）'], ['0', '黑色优先'], ['1', '白色优先'], ['5', '多数派']] },
@@ -910,6 +912,10 @@ async function runVectorize(force) {
     /* 矢量后处理（同色合并 / 碎块清理 / 边缘平滑）：放在 SVGO 之后，
        输出的对象数即最终交付文件里的对象数 */
     const post1 = collectPostOptions(1);
+    /* cutout = 引擎侧「无缝马赛克」：VTracer 让每条共享边界只拟合一次、相邻两面共用同一几何。
+       任何逐路径改写几何的后处理都会重新撕开共享边界 → 自动跳过几何类后处理，
+       仅保留同色合并与碎块清理（二者不移动共享边界）。 */
+    const isCutout = options.hierarchical === 'cutout';
     if (post1.enabled || post1.minArea > 0) {
       prog.stage(92, '矢量后处理');
       try {
@@ -917,27 +923,32 @@ async function runVectorize(force) {
           tolerance: post1.tolerance,
           minArea: post1.minArea,
           edgeSmooth: post1.edgeSmooth,
+          geometry: !isCutout,
           /* 方案 C：把像素图交给碎块清理，用「与周围的对比度」区分设计细节与噪点 */
           imgData: (rgba && pw && ph) ? new ImageData(new Uint8ClampedArray(rgba), pw, ph) : null,
           onProgress: (p, label) => prog.stage(90 + Math.round(p * 0.04), label)
         });
         svgText = mr.svg;
+        if (isCutout) mr.warnings.push('无缝模式：已跳过几何后处理（保共用边界）');
         showMergeStatus(1, mr.stats, mr.warnings);
-        /* 方案 B：相邻色块边界一致化——把错位 ≤1.2px 的相邻锚点吸附到同一位置，
-           消除「碎边」（相邻色块各自独立拟合导致的公共边界错位） */
-        try {
-          const snapRes = snapAdjacentBoundaries(svgText, { snapTol: 1.2 });
-          if (snapRes.snapped > 0) svgText = snapRes.svg;
-        } catch (e) {
-          console.warn('边界吸附跳过', e);
-        }
-        /* 方案 D：等半径统一——把尺寸相近的成组圆点（蘑菇帽白点、装饰点）统一半径，
-           还原设计稿里"同一尺寸"的整齐感 */
-        try {
-          const radRes = unifyEqualRadiiInSvg(svgText, { tolRatio: 0.18, minCount: 3 });
-          if (radRes.unified > 0) svgText = radRes.svg;
-        } catch (e) {
-          console.warn('等半径统一跳过', e);
+        /* 以下两步都会移动/替换路径几何 → cutout 下必须跳过，否则破坏共享边界 */
+        if (!isCutout) {
+          /* 方案 B：相邻色块边界一致化——把错位 ≤1.2px 的相邻锚点吸附到同一位置，
+             消除「碎边」（相邻色块各自独立拟合导致的公共边界错位） */
+          try {
+            const snapRes = snapAdjacentBoundaries(svgText, { snapTol: 1.2 });
+            if (snapRes.snapped > 0) svgText = snapRes.svg;
+          } catch (e) {
+            console.warn('边界吸附跳过', e);
+          }
+          /* 方案 D：等半径统一——把尺寸相近的成组圆点（蘑菇帽白点、装饰点）统一半径，
+             还原设计稿里"同一尺寸"的整齐感 */
+          try {
+            const radRes = unifyEqualRadiiInSvg(svgText, { tolRatio: 0.18, minCount: 3 });
+            if (radRes.unified > 0) svgText = radRes.svg;
+          } catch (e) {
+            console.warn('等半径统一跳过', e);
+          }
         }
       } catch (e) {
         console.warn('矢量后处理失败，使用原 SVG', e);

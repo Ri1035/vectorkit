@@ -14,7 +14,8 @@
 | 文档 | 说明 | 状态 |
 | --- | --- | --- |
 | [PLAN_HIGH_FIDELITY.md](./PLAN_HIGH_FIDELITY.md) | 高清矢量化专项计划（v2）：平滑边缘 + 色块整合的迭代主线与执行进度 | 执行中 |
-| [SMOOTHING_PLAN.md](./SMOOTHING_PLAN.md) | 矢量输出平滑方案（v1.5.0 提案）：细节保留 + 减少锯齿 | 已并入主线 |
+| [SMOOTHING_PLAN.md](./SMOOTHING_PLAN.md) | 矢量输出平滑方案（v2.2 提案）：细节保留 + 减少锯齿 | 已并入主线 |
+| [OPTIMIZATION_EDGE_SEPARATION.md](./OPTIMIZATION_EDGE_SEPARATION.md) | 平滑边缘 & 色块隔离：多引擎源码拆解 + vectorkit 结合优化方案 | 待实施 |
 | [OPTIMIZATION_PLAN.md](./OPTIMIZATION_PLAN.md) | 竞品拆解（Vector Magic 桌面版）后的优化计划与结论 | 参考 |
 
 ## 🔬 技术实现

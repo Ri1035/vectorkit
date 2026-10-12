@@ -558,7 +558,7 @@ function isHighContrastDetail(item, img, contrastKeep) {
 }
 
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, adaptive = true, imgData = null, contrastKeep = 60, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, adaptive = true, geometry = true, imgData = null, contrastKeep = 60, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -784,9 +784,13 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         continue;
       }
 
-      // 锚点简化（含可选的边缘平滑）
-      const pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol, adaptive);
-      anchorsPruned += pruned;
+      /* 锚点简化（含可选的边缘平滑）。geometry=false（cutout 无缝模式）时跳过：
+         逐路径重拟合会让相邻两面共享的那条边界各自变形 → 撕开接缝。 */
+      let pruned = 0;
+      if (geometry) {
+        pruned = pruneAnchors(acc, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol, adaptive);
+        anchorsPruned += pruned;
+      }
 
       const node = acc.exportSVG({ precision: 2, asString: false });
       const dOut = node.getAttribute('d');
@@ -823,7 +827,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
 
         if (doFilter && maxSubpathArea(p) < minArea && !isHighContrastDetail(p, imgData, contrastKeep)) { drops.add(c); continue; }
 
-        if (edgeSmooth > 0) {
+        if (edgeSmooth > 0 && geometry) {
           const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol, adaptive);
           anchorsPruned += changed;
           // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
