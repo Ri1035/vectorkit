@@ -36,6 +36,8 @@ function makeCanvas(w, h) {
  * @param {number} maxSide 长边上限像素；<=0 或大于原尺寸则不处理
  * @returns {ImageData}
  */
+import { contrastAwareDenoise } from './denoise.js';
+
 export function downscaleImageData(src, maxSide) {
   if (!maxSide || maxSide <= 0) return src;
   const long = Math.max(src.width, src.height);
@@ -750,7 +752,7 @@ export function preprocess(src, opts = {}) {
    * 但代价是引擎会额外描摹出一层「背景色区域」——其抗锯齿边缘会变成
    * 沿图形轮廓的大量碎路径（用户实测反馈："那么多碎轮廓"），
    * 收益（救回眼白）远小于代价。保留实现，待有更精准方案后再启用。 */
-  const { maxSide = 0, denoise = false, smooth = 0, maxColors = 0, upsample = false, upsampleFactor = 0, interiorProtect = false, protectElements = false, paletteMerge = false, onProgress } = opts;
+  const { maxSide = 0, denoise = false, contrastDenoise = false, contrastDelta = 12, smooth = 0, maxColors = 0, upsample = false, upsampleFactor = 0, interiorProtect = false, protectElements = false, paletteMerge = false, onProgress } = opts;
   const t0 = performance.now();
   const steps = [];
   const colorsBefore = countColors(src);
@@ -800,6 +802,15 @@ export function preprocess(src, opts = {}) {
     onProgress?.(35, '中值去噪');
     img = medianFilter(img);
     steps.push('中值去噪');
+  }
+
+  /* 对比度感知降噪（v5.6）：只抹平"局部对比度低"的像素（噪声），保留真实边缘。
+     目的：让引擎得以使用**更低去噪阈值**（保细节）而不产生噪声碎块。 */
+  if (contrastDenoise) {
+    onProgress?.(45, '对比度感知降噪');
+    const cd = contrastAwareDenoise(img, { radius: 2, delta: contrastDelta });
+    img = cd.imageData;
+    steps.push(`对比度感知降噪 ${cd.smoothed} 像素（阈值 ${contrastDelta}）`);
   }
 
   if (smooth > 0) {

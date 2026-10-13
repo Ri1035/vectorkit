@@ -554,7 +554,42 @@ photo 改 cutout；全部预设去掉 simplify；4 个配置模板同步下调�
 
 **建议**：**先做 D 或 A**；C 只有在"保真度必须对标 VM"是硬性目标时才值得投入。
 
-### v5.4（计划）— 提升精修性价比（若仍想继续走"连续优化"路线）
+### v5.5（2026-10-13）— UI 布局修正 + 竞品导出物深析 ✅
+
+**UI**：引擎选择器改两列网格（第三个独占一行）→ 修复按钮文字被 ellipsis 截断；
+预设卡等高 + 描述限两行。**用无头 Edge 实拍复核**，不凭代码猜。
+
+**竞品导出物深析**（用户导出的 bc.svg/eps/ai）：
+**VM 的 EPS 是 RGB（非 CMYK）且极简 PS（无 clip/gsave）**；其 `.ai` 是 **PostScript 型**（老格式）；
+EPS 与 SVG **同源几何**。**我们的 EPS 是 CMYK 且同样极简 → 印刷色彩空间领先**。
+
+**Backlog 新增**：对比度感知降噪（保细节+少碎块的原理解法）、AI 导出、ArtCraft/VectorCraft 参考。
+
+### v5.6（2026-10-13）— 对比度感知降噪 + ★ VectorCraft 描摹机制调研 ✅
+
+**对比度感知降噪**：新增 `denoise.js`（逐通道极差判据 + 逐通道窗口均值），接入预处理（**默认关闭**）。
+实测：配合引擎去噪 4 → **PSNR +1.74 dB**（bc 1024² 该尺寸最佳）；干净插画上几乎无变化（无噪声可去）。
+**修掉一个严重 bug**：第一版用"亮度均值修正各通道"→ 彩色像素被冲淡、PSNR 暴跌 3 dB。
+教训：**"按亮度判断、按通道改写"的代码必须配像素级回归**，否则颜色会被悄悄破坏。
+
+**★ VectorCraft（`storytold/vectorcraft`，Apache-2.0）的 `crates/trace/` 就是一套完整描摹实现**，
+其机制修正了我们 v5.2 的两个错误：
+- **覆盖率 α**（跨裂缝那一列像素的"内色占比"）→ 而非亮度中点；
+- **三区域交汇处切断轮廓 + 两侧同算法拟合** → 而非对 `simplify` 后的长段锚点做刚性平移。
+详见 `docs/CHANGELOG.md` [5.6]。
+
+### v5.7（计划）— 按 VectorCraft 机制重做亚像素边界（替代 v5.2 的失败路线）
+
+> **这是当前最有希望缩小最后 ~2 dB 的方向。** 要点（来自 `storytold/vectorcraft` 的 `crates/trace/`）：
+> 1. 自建轮廓提取：像素裂缝边 → 闭环（外 CW / 孔 CCW）；
+> 2. **覆盖率 α**：每条裂缝用跨越它的那一列像素的内色占比求亚像素偏移（**不是亮度中点**）；
+> 3. **交汇处切断**：三区域相遇处切段，每段独立拟合；
+> 4. **两侧同算法**：保证相邻区域共享同一条曲线（v5.2 的教训）；
+> 5. Flat-Logo 模式可先用 **cubic B-spline 插值的覆盖率场**（Unser 递归预滤波）做平滑。
+>
+> **验收**：bc 1024² 从当前 34.5 dB 起，PSNR 提升 **≥ +1 dB** 才考虑接入默认管线。
+
+### v5.8（计划）— 提升精修性价比（若仍想继续走"连续优化"路线）
 
 1. **降低单次试探成本**：只重渲染被改动子路径的**包围盒**区域（resvg 无法局部渲染 →
    改为用 Canvas Path2D 局部重绘 + 局部误差）；
@@ -596,16 +631,3 @@ photo 改 cutout；全部预设去掉 simplify；4 个配置模板同步下调�
 | 11 | **AI（Illustrator）导出** | 未做。竞品调研：现代 `.ai` 以 PDF 为主，**Vector Magic 导出的是 PostScript 型**（老格式，CorelDRAW X4 可读）；我们已有 EPS/DXF，若需可低成本补一个 `.ai` | 待排期 |
 | 12 | **参考项目：ArtCraft / VectorCraft**（`github.com/storytold`） | 已调研：纯 Rust + **WASM 可在浏览器跑**，**含位图描摹功能**；导出/导入 SVG、PDF、`.ai`、EPS、DXF；CLI + JSON 通道 + **MCP server**；宣称 2 万形状 ~27ms。可借鉴：① 描摹算法 ② 浏览器内 Rust/WASM 架构 ③ MCP/CLI 自动化接口 | 参考 |
 | 9 | **本地与远端 commit SHA 持续分叉** | `git push` 长期被代理阻断（`Empty reply`/`502`）→ 改用 `scripts/_push.cjs`（GitHub API）推送，而 API 生成的提交 SHA 必然不同 → 之后每次 `git push` 都被拒（non-fast-forward）。**网络恢复后应 `git fetch && git reset --hard origin/main` 对齐**；另注意 `_push.cjs` **不处理删除/重命名** | 运维 |
-
-### v5.5（2026-10-13）— UI 布局修正 + 竞品导出物深析 ✅
-
-**UI**：引擎选择器改两列网格（第三个独占一行）→ 修复按钮文字被 ellipsis 截断；
-预设卡等高 + 描述限两行。**用无头 Edge 实拍复核**，不凭代码猜。
-
-**竞品导出物深析**（用户导出的 bc.svg/eps/ai）：
-**VM 的 EPS 是 RGB（非 CMYK）且极简 PS（无 clip/gsave）**；其 `.ai` 是 **PostScript 型**（老格式）；
-EPS 与 SVG **同源几何**。**我们的 EPS 是 CMYK 且同样极简 → 印刷色彩空间领先**。
-
-**Backlog 新增**：对比度感知降噪（保细节+少碎块的原理解法）、AI 导出、ArtCraft/VectorCraft 参考。
-
-

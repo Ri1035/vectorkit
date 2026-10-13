@@ -756,6 +756,15 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
             <input type="checkbox" id="preDenoise" checked>
             <span style="flex:1;font-weight:600">中值去噪<span class="hint">　清除孤立噪点</span></span>
           </label>
+          <label class="row" style="cursor:pointer">
+            <input type="checkbox" id="preContrast">
+            <span style="flex:1;font-weight:600">对比度感知降噪
+              <span class="tip" tabindex="0" aria-label="对比度感知降噪说明">
+                ?
+                <span class="tip-pop" role="tooltip"><b>默认关闭。</b>只抹平"局部对比度低"的像素（压缩噪点/杂色），<b>完整保留真实边缘</b>。用于让「去噪」可以用<b>更小</b>的阈值：细节留得更多，同时噪声碎块不回来。<br>实测（bc 1024²）：配合「去噪 4」时 PSNR <b>+1.74 dB</b>（32.75 → 34.49，该尺寸下历史最佳）；干净插画上则几乎无变化（本来就没噪声可去），约 +180ms。<br>压缩过或带明显噪点的照片/素材最有效。</span>
+              </span>
+            </span>
+          </label>
           <div class="row">
             <label for="preRes">描摹分辨率
               <span class="tip" tabindex="0" aria-label="描摹分辨率说明">

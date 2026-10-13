@@ -527,7 +527,7 @@ updateOutputSummaries();
 /* ---------- 图像预处理设置 ============================ */
 
 const PRE_UI = {
-  size: '#preSize', denoise: '#preDenoise', smooth: '#preSmooth',
+  size: '#preSize', denoise: '#preDenoise', cdenoise: '#preContrast', smooth: '#preSmooth',
   smoothV: '#preSmoothV', colors: '#preColors', status: '#preStatus', sum: '#sumPre',
   res: '#preRes'
 };
@@ -536,6 +536,7 @@ function collectPreOptions() {
   const size = parseInt($(PRE_UI.size).value, 10) || 0;
   const colors = parseInt($(PRE_UI.colors).value, 10) || 0;
   const denoise = $(PRE_UI.denoise).checked;
+  const contrastDenoise = !!(PRE_UI.cdenoise && $(PRE_UI.cdenoise) && $(PRE_UI.cdenoise).checked);
   const smooth = parseInt($(PRE_UI.smooth).value, 10) || 0;
   /* 描摹分辨率：'auto' = 旧行为（短边 <800px 自动 ×2）；'2'/'3' = 强制倍数；'0' = 关闭 */
   const resEl = $(PRE_UI.res);
@@ -543,8 +544,8 @@ function collectPreOptions() {
   const upsample = resRaw === 'auto';
   const upsampleFactor = resRaw === 'auto' || resRaw === '0' ? 0 : (parseInt(resRaw, 10) || 0);
   return {
-    maxSide: size, denoise, smooth, maxColors: colors, upsample, upsampleFactor,
-    active: !!size || denoise || !!smooth || colors >= 2 || upsample || upsampleFactor >= 2
+    maxSide: size, denoise, contrastDenoise, smooth, maxColors: colors, upsample, upsampleFactor,
+    active: !!size || denoise || contrastDenoise || !!smooth || colors >= 2 || upsample || upsampleFactor >= 2
   };
 }
 
@@ -552,6 +553,7 @@ function collectPreOptions() {
 function updatePreSummary() {
   const o = collectPreOptions();
   const parts = [o.maxSide ? o.maxSide + 'px' : '原始尺寸'];
+  if (o.contrastDenoise) parts.push('对比度降噪');
   if (o.upsampleFactor >= 2) parts.push('描摹 ×' + o.upsampleFactor);
   else if (o.upsample) parts.push('描摹 自动');
   if (o.denoise) parts.push('去噪');
@@ -578,7 +580,7 @@ $(PRE_UI.smooth).addEventListener('input', e => {
   updatePreSummary();
   S1.lastKey = '';
 });
-[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise, PRE_UI.res].forEach(sel => {
+[PRE_UI.size, PRE_UI.colors, PRE_UI.denoise, PRE_UI.cdenoise, PRE_UI.res].forEach(sel => {
   const el = $(sel);
   if (!el) return;
   el.addEventListener('change', () => {
