@@ -46,8 +46,18 @@ console.log('  vtracer: ' + Object.keys(PRESETS.vtracer).join(', '));
 console.log('  potrace: ' + Object.keys(PRESETS.potrace).join(', '));
 
 console.log('\n=== v5.3 默认基线（双图实测确定，不得随意回退）===');
-ok(JSON.stringify(Object.keys(PRESETS.vtracer)) === JSON.stringify(['logo', 'photo', 'line', 'poster', 'pixel', 'vmde']),
-  'vtracer 预设 = logo/photo/line/poster/pixel/vmde');
+ok(JSON.stringify(Object.keys(PRESETS.vtracer)) === JSON.stringify(['logo', 'detail', 'photo', 'line', 'poster', 'pixel', 'vmde']),
+  'vtracer 预设 = logo/detail/photo/line/poster/pixel/vmde');
+
+/* v6.8b 实测（VM 对照 + 局部放大肉眼核对）发现 filterSpeckle=8 会丢掉眼睛高光与鼻孔，
+   故新增 detail 档（filterSpeckle=4 + simplify=0）—— 但**既有档位一律不动**（用户决定两个都留）。 */
+ok(collect('vtracer', 'detail').filterSpeckle === 4, 'detail 使用去噪 4（实测保留眼睛高光/鼻孔）');
+/* collectOptions 会 delete 掉 falsy 的 simplify；VTracer 官方语义为 "omit = off"，
+   故 undefined 与 simplify:0 等价（都已实测：命令数 2746，细节保留）。 */
+ok(collect('vtracer', 'detail').simplify === undefined, 'detail 不下发 simplify（= 不简化，官方 omit=off）');
+ok(collect('vtracer', 'detail').hierarchical === 'cutout', 'detail 使用 cutout');
+/* 既有档位必须逐字不变（用户约定：不得擅自改变既有档位默认行为） */
+ok(collect('vtracer', 'logo').filterSpeckle === 8, 'logo 仍为去噪 8（既有档位不得改动）');
 ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 8, '主面板「去噪」默认值 = 8（不得改回 14）');
 ok(collect('vtracer', 'logo').filterSpeckle === 8, 'logo 使用去噪 8');
 ok(collect('vtracer', 'logo').hierarchical === 'cutout', 'logo 使用 cutout（实测优于 stacked）');

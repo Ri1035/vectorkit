@@ -682,6 +682,7 @@ const PRESETS = {
   },
   vtracer: {
     logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    detail: { name: '高细节', desc: '保留眼睛高光/鼻孔等细部（v6.8 实测）· 边缘略锯、体积较大', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 4, simplify: 0, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, hierarchical: 'stacked', filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
