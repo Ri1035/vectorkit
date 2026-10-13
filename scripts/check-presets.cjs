@@ -68,6 +68,24 @@ ok(collect('vtracer', 'logo').watershedDetail === undefined, '非分水岭档不
 ok(collect('vtracer', 'logo').optimize === undefined, 'optimize = 0 时不下发');
 ok(ADV.vtracer.some(d => d.key === 'watershedDetail' && d.def === 128), 'ADV watershedDetail 存在（默认 128）');
 
+console.log('\n=== 版本一致性（防止文档版本号漂移）===');
+{ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  const cl = fs.readFileSync(path.join(root, 'docs/CHANGELOG.md'), 'utf8');
+  const heads = [...cl.matchAll(/^## \[(\d+\.\d+)\]/gm)].map(m => m[1]);
+  ok(heads.length > 0 && heads[0] === pkg, 'CHANGELOG 最新条目 [' + (heads[0] || '-') + '] == package.json ' + pkg);
+  /* 只检查**标题行**的小数位数（正文里的示例、历史记录、SVG 路径坐标不算） */
+  const docs = ['docs/CHANGELOG.md', 'docs/PLAN_HIGH_FIDELITY.md', 'docs/PLAN_PARALLEL_ENGINE.md',
+    'docs/PLAN_JOINT_OPTIMIZATION.md', 'docs/COMPARISON_DESKTOP_VS_WEB.md'];
+  const bad = [];
+  for (const d of docs) {
+    const fp = path.join(root, d);
+    if (!fs.existsSync(fp)) continue;
+    const txt = fs.readFileSync(fp, 'utf8');
+    for (const m of txt.matchAll(/^#{2,3} \[?v?(\d+)\.(\d+)\]?/gm)) if (m[2].length > 1) bad.push(d + ' → ' + m[0].trim());
+  }
+  ok(bad.length === 0, '所有文档的版本**标题**均为一维小数' + (bad.length ? '（违规: ' + bad.join(' | ') + '）' : ''));
+}
+
 console.log('\n=== 切换预设必须清结果缓存 ===');
 ok(/S1\.preset = id;[\s\S]{0,120}S1\.lastKey = ''/.test(src), "预设点击处理里有 S1.lastKey = ''");
 

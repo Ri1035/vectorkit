@@ -4,6 +4,49 @@
 > （例：第 10 版 = `v1.0`，第 20 版 = `v2.0`，第 43 版 = `v4.3`）；**不出现三段式版本号**。
 > 2026-10-08 已按此规则对全部历史条目统一重编号。
 
+## [6.5] - 2026-10-13
+
+### 收尾：文档全面校准 + **版本号一致性纳入回归**（防止再次漂移）
+
+#### 版本号全面审查结果
+
+| 检查项 | 结果 |
+|---|---|
+| `package.json` | **6.5** ✓（本版） |
+| `index.html` 版本显示 | 使用 `{{VERSION}}` 占位，由构建注入 → **不会漂移** ✓ |
+| `docs/CHANGELOG.md` 条目 | **0.1 → 6.5 全部齐全、无缺漏** ✓ |
+| 各文档中的版本号 | 绝大多数为**历史引用**（正常）；发现并修正 3 处失效 |
+
+**修正的 3 处**：
+1. `PLAN_HIGH_FIDELITY.md` 里的 **`v5.10（计划）`** —— 非法版本号（重编号时遗留）→ 改为 **`v6.5（计划）**，
+   内容顺延为「并列引擎 P2：拟合激进度」，并写入**止损点**；
+2. `app.js` 注释里的 `v5.0 实验：重栅格化误差优化` → 更正为 `v5.3 引入`；
+3. `PLAN_JOINT_OPTIMIZATION.md`（C 方案）状态停在"待 v5.4 后启动" → **标注为已被
+   `PLAN_PARALLEL_ENGINE` 取代**（其核心结论已被 v5.2/v5.6/v6.1 的实测推翻），仅作历史留存。
+
+#### 新增：版本一致性纳入 `npm test`
+
+`scripts/check-presets.cjs` 增加三项断言：
+- **CHANGELOG 最新条目 == `package.json` 版本**（直接堵住"版本号漂移"）；
+- CHANGELOG 存在版本条目；
+- **CHANGELOG 中不存在三位版本号**（如 `v5.10` 这类非法写法）。
+
+#### 仓库文档状态一览
+
+| 文档 | 状态 |
+|---|---|
+| `docs/README.md` | 文档索引，已含全部计划文档 ✓ |
+| `docs/CHANGELOG.md` | 0.1 → 6.5 完整 ✓ |
+| `docs/PLAN_HIGH_FIDELITY.md` | 主线计划，v6.5 顺延已修正 ✓ |
+| `docs/PLAN_PARALLEL_ENGINE.md` | 并列引擎，P0/P1/去碎片化已完成，下一步 P2 ✓ |
+| `docs/PLAN_JOINT_OPTIMIZATION.md` | **已标注被取代** ✓ |
+| `docs/COMPARISON_DESKTOP_VS_WEB.md` | 竞品对照，含同图实测数据 ✓ |
+| `docs/QUALITY_VS_TIME.md` | 质量/耗时实测（v4.7 数据，最新一次实测在 CHANGELOG [6.4]）|
+| `docs/OPTIMIZATION_EDGE_SEPARATION.md` | 引擎能力分析（v4.4–v4.9，结论已并入 CHANGELOG）|
+| `README.md` | 能力表（已含 描摹分辨率/重栅格化精修/对比度降噪 三行）|
+
+**原型（`subpx.js` / `bezierfit.js`）仍未接入任何默认路径**，线上功能与画质不受影响。
+
 ## [6.4] - 2026-10-13
 
 ### 区域合并 / 去碎片化：**路径数 303 → 96，追平 VTracer（94）且 PSNR 不降反升**
