@@ -19,6 +19,7 @@
 | [QUALITY_VS_TIME.md](./QUALITY_VS_TIME.md) | 为什么转得快？「加时间」有用吗 —— 耗时/质量实测与档位设计 | 已实测 |
 | [COMPARISON_DESKTOP_VS_WEB.md](./COMPARISON_DESKTOP_VS_WEB.md) | 对照文档：Vector Magic 桌面版（软件） vs vectorkit（Web 应用） | 持续更新 |
 | [PLAN_JOINT_OPTIMIZATION.md](./PLAN_JOINT_OPTIMIZATION.md) | C 方案计划：联合优化 / 可微光栅化（逼近 Vector Magic） | 待启动 |
+| [PLAN_REVIEW_2026-10-13.md](./PLAN_REVIEW_2026-10-13.md) | **计划审查报告**：9 处站不住脚的前提、修正后的指标体系、计划状态总表与纪律 | 已完成 |
 | [PLAN_PARALLEL_ENGINE.md](./PLAN_PARALLEL_ENGINE.md) | 并列引擎计划：按 VectorCraft 机制做亚像素边界（含 M1 停损标准） | 进行中 |
 | [OPTIMIZATION_PLAN.md](./OPTIMIZATION_PLAN.md) | 竞品拆解（Vector Magic 桌面版）后的优化计划与结论 | 参考 |
 
