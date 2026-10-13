@@ -684,23 +684,7 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
   <!-- ============ 位图转矢量 ============ -->
   <section class="panel active" id="panel-r2v">
     <div class="col">
-      <div class="card">
-        <h3>输入图片</h3>
-        <button class="drop" id="drop1" type="button">
-          <div class="ico">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
-            </svg>
-          </div>
-          <div class="t1">点击选择，或拖拽图片到此处</div>
-          <div class="t2">PNG · JPG · WebP · GIF · BMP</div>
-        </button>
-        <div class="btnrow" style="margin-top:12px">
-          <button class="btn ghost sm" id="demo1" type="button">载入示例图</button>
-          <button class="btn ghost sm hidden" id="rerun1" type="button">重新转换</button>
-        </div>
-        <div id="file1"></div>
-      </div>
+
 
       <div class="card" id="settingsCard">
         <div class="set-tabs" id="setTabs">
@@ -931,6 +915,8 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
         <div class="stage-head">
           <span class="ttl">预览对比</span>
           <div class="btnrow">
+            <button class="btn ghost sm" id="import1" type="button" title="导入图片：点击选择，或把图片拖到下方预览区">导入图片</button>
+            <button class="btn ghost sm hidden" id="rerun1" type="button">重新转换</button>
             <button class="btn ghost sm" id="viewToggle1" type="button" style="display:none">只看结果</button>
             <button class="btn ghost sm" id="dl1" type="button" disabled>下载 SVG</button>
             <button class="btn ghost sm" id="dlEps" type="button" disabled>下载 EPS</button>
@@ -949,8 +935,9 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
                 <rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>
               </svg>
             </div>
-            <div>载入一张图片后开始转换</div>
-            <div class="sub">转换全程在本地完成，不产生任何网络请求</div>
+            <div>点击「导入图片」，或把图片拖到这里</div>
+            <div class="sub">PNG · JPG · WebP · GIF · BMP · 转换全程在本地完成，不产生任何网络请求</div>
+            <div id="file1"></div>
           </div>
         </div>
         <div class="stats hidden" id="stats1"></div>

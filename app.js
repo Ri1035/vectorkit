@@ -298,6 +298,18 @@ function wireDrop(dropEl, inputHandler) {
   return pick;
 }
 
+/** 仅拖放（不劫持点击）：把预览区本身变成可投放区 */
+function wireDropZone(zone, inputHandler) {
+  ['dragenter', 'dragover'].forEach(ev =>
+    zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev =>
+    zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('over'); }));
+  zone.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f) inputHandler(f);
+  });
+}
+
 function statCard(items) {
   const wrap = document.createElement('div');
   wrap.className = 'stats';
@@ -1115,7 +1127,7 @@ function clearS1() {
   if (reco) reco.classList.add('hidden');
 }
 
-wireDrop($('#drop1'), async file => {
+const onFile1 = async file => {
   try {
     const res = await loadRaster(file);
     S1.imageData = res.imageData;
@@ -1135,7 +1147,11 @@ wireDrop($('#drop1'), async file => {
   } catch (err) {
     alert('无法读取该图片：' + (err.message || err));
   }
-});
+};
+
+/* 工具栏按钮：点击选择；预览区：直接拖放（同一处理函数） */
+wireDrop($('#import1'), onFile1);
+wireDropZone($('#stage1'), onFile1);
 
 $('#engineSeg').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -1695,26 +1711,6 @@ function makeDemo(kind) {
   return c;
 }
 
-$('#demo1').addEventListener('click', () => {
-  const useColor = S1.engine !== 'potrace';
-  const c = makeDemo(useColor ? 'color' : 'line');
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  S1.imageData = ctx.getImageData(0, 0, c.width, c.height);
-  S1.w = c.width; S1.h = c.height;
-  S1.outName = 'demo-vector.svg';
-  S1.lastKey = '';
-
-  revoke(S1.srcUrl);
-  S1.srcUrl = c.toDataURL('image/png');
-  renderStage1();
-  PROG[1].reset();
-
-  const name = useColor ? 'demo-logo.png' : 'demo-sketch.png';
-  S1.file = { name, size: Math.round(S1.srcUrl.length * 0.72) };
-  fileTag($('#file1'), S1.file, clearS1);
-  $('#run1').disabled = false;
-  setTimeout(updateRecommendation, 60);
-});
 
 /* ============================ Tab2 · 矢量转位图 ============================ */
 
