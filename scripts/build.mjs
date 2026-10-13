@@ -15,10 +15,12 @@ if (fs.existsSync(dist)) {
 }
 
 /* 自动收集根目录下所有前端模块（.js）——避免手动维护列表时遗漏新模块
-   （曾因漏掉 dxf-export.js 导致线上 DXF 导出功能不可用） */
+   （曾因漏掉 dxf-export.js 导致线上 DXF 导出功能不可用）
+   例外：perceptual.js 是**测量/回归用模块**，生产管线不引用，不打进线上包 */
+const DEV_ONLY = new Set(['perceptual.js']);
 const files = ['index.html', 'README.md'];
 for (const f of fs.readdirSync(root)) {
-  if (f.endsWith('.js') && !f.startsWith('_')) files.push(f);
+  if (f.endsWith('.js') && !f.startsWith('_') && !DEV_ONLY.has(f)) files.push(f);
 }
 for (const f of files) {
   if (fs.existsSync(path.join(root, f))) {

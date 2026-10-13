@@ -95,5 +95,18 @@ for (const id of ['preRes', 'preSize', 'preDenoise', 'preSmooth', 'preColors']) 
 }
 ok(!html.includes('id="preUpsample"'), '旧「小图自动上采样」复选框不得残留');
 
+console.log('\n=== 观感指标方向验证（纪律：指标先验方向再用）===');
+{ /* perceptual.js 的三个指标必须保持方向正确；一旦被改坏，立即拦下 */
+  const r = require('child_process').spawnSync(process.execPath,
+    [path.join(root, 'scripts/_verify-perceptual.mjs')], { encoding: 'utf8' });
+  const out = (r.stdout || '') + (r.stderr || '');
+  const lines = out.split('\n').filter(l => l.includes('✓') || l.includes('✗'));
+  for (const l of lines) ok(l.includes('✓'), l.replace(/^\s*[✓✗]\s*/, ''));
+  if (r.status !== 0) ok(false, 'perceptual 方向验证脚本非零退出（stdout 见上）');
+  /* perceptual.js 是测量模块，生产管线不引用 → 不得被打进线上包 */
+  const build = fs.readFileSync(path.join(root, 'scripts/build.mjs'), 'utf8');
+  ok(/DEV_ONLY[\s\S]{0,120}perceptual\.js/.test(build), 'perceptual.js 已列入 DEV_ONLY（不进线上包）');
+}
+
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));
 process.exit(fail ? 1 : 0);
