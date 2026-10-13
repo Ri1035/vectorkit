@@ -67,7 +67,9 @@ ok(collect('vtracer', 'logo').cornerThreshold === 60, 'logo 拐角 60 实测最�
 ok(collect('vtracer', 'logo').colorPrecision === 6, 'logo 颜色精度 6 实测最优（4 灾难性 22.55dB / 8 降至 35.24）');
 ok(collect('vtracer', 'logo').lengthThreshold === 4, 'logo 细节保留 4（实测 8 反而变差，保持 4）');
 ok(collect('vtracer', 'vmde').pathPrecision === 1, 'vmde 路径精度 1（与 logo 同族，无条件更优）');
-ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 8, '主面板「去噪」滑块默认 = 8（面板默认与 logo 档分离，勿动）');
+ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 10, '面板「去噪」兜底默认 = 10（与 logo 档对齐实测最优）');
+ok(SCHEMA.vtracer.find(d => d.key === 'layerDifference').def === 32, '面板「层间差异」兜底默认 = 32（与 logo 档对齐实测最优）');
+ok(ADV.vtracer.find(d => d.key === 'pathPrecision').def === 1, 'ADV 路径精度兜底默认 = 1');
 ok(collect('vtracer', 'logo').hierarchical === 'cutout', 'logo 使用 cutout（实测优于 stacked）');
 ok(collect('vtracer', 'logo').simplify === 1, 'logo 使用 simplify 1（体积不设约束后仍保留：+0.58dB 需体积 ×2.9，取舍见 CHANGELOG 7.1）');
 ok(collect('vtracer', 'vmde').filterSpeckle === 6, 'vmde（最高保真）使用去噪 6');
@@ -109,6 +111,26 @@ console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
     ok(cutoutEdge.length === 0, `cutout 模板不应写 post.edge（cutout 下已跳过几何后处理）：${cutoutEdge.join(',') || '无'}`);
     ok(/setCtlValue\('#smoothEdge', tpl\.post\.edge \|\| 0/.test(src), 'applyTemplate 对未写 edge 的模板显式置 0，杜绝滑块残留');
     ok(ids.includes('line') && !noHier.includes('line'), 'line 模板存在且已声明层级模式');
+
+    /* v7.1.1 模板参数实测寻优：钉死 5 个实测获益模板的层差/去噪；
+       lean/tiny 有意保持（体积优先档，实测层差 32 收益≈0 甚至区域变差） */
+    const pOf = id => { const b = blocks.find(x => (x.match(/\bid:\s*'([^']*)'/) || [])[1] === id);
+      const pm = b.match(/params:\s*\{([\s\S]*?)\}/); return pm ? pm[1] : ''; };
+    const EXPECT_TPL = {
+      daily:    { filterSpeckle: 10, layerDifference: 32 },
+      artwork:  { filterSpeckle: 6,  layerDifference: 32 },
+      smooth:   { filterSpeckle: 10, layerDifference: 32 },
+      faithful: { filterSpeckle: 4,  layerDifference: 24 },
+      photo:    { filterSpeckle: 10, layerDifference: 32 },
+      lean:     { filterSpeckle: 14, layerDifference: 16 },
+      tiny:     { filterSpeckle: 16, layerDifference: 20 },
+      line:     { filterSpeckle: 2,  layerDifference: 16 },
+    };
+    for (const id in EXPECT_TPL) {
+      const p = pOf(id), e = EXPECT_TPL[id];
+      ok(new RegExp(`filterSpeckle:\\s*${e.filterSpeckle}\\b`).test(p) && new RegExp(`layerDifference:\\s*${e.layerDifference}\\b`).test(p),
+        `模板 ${id} 参数 = 去噪${e.filterSpeckle}/层差${e.layerDifference}`);
+    }
   }
 }
 

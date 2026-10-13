@@ -706,8 +706,8 @@ const PRESETS = {
 
 const SCHEMA = {
   vtracer: [
-    { key: 'filterSpeckle', label: '去噪（越小越保细节）', min: 0, max: 32, step: 1, def: 8 },
-    { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 16 },
+    { key: 'filterSpeckle', label: '去噪（越小越保细节）', min: 0, max: 32, step: 1, def: 10 },
+    { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 32 },
     { key: 'maxColors', label: '最大色数（0 为不限）', min: 0, max: 64, step: 1, def: 0 },
     { key: 'cornerThreshold', label: '拐角阈值', min: 0, max: 180, step: 1, def: 60 },
     { key: 'lengthThreshold', label: '细节保留度', min: 0, max: 20, step: 1, def: 4 }
@@ -733,7 +733,7 @@ const ADV = {
     { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠（上层覆盖下层）'], ['cutout', '无缝共用边界（马赛克）']] },
     { key: 'mode', label: '曲线模式', type: 'select', options: [['spline', '平滑样条'], ['polygon', '多边形'], ['pixel', '像素不简化']] },
     { key: 'colorPrecision', label: '颜色精度', type: 'range', min: 1, max: 8, step: 1, def: 6 },
-    { key: 'pathPrecision', label: '路径精度', type: 'range', min: 0, max: 8, step: 1, def: 2 },
+    { key: 'pathPrecision', label: '路径精度', type: 'range', min: 0, max: 8, step: 1, def: 1 },
     { key: 'simplify', label: '曲线简化容差（0 关闭；vmde 档为 1）', type: 'range', min: 0, max: 5, step: 0.5, def: 0 },
     { key: 'watershedDetail', label: '分水岭细节（仅分区=分水岭时生效）', type: 'range', min: 16, max: 512, step: 16, def: 128 },
     { key: 'optimize', label: '输出优化（0 关 / 1 量化清理 / 2 加缩写）', type: 'range', min: 0, max: 2, step: 1, def: 0 }
@@ -1210,7 +1210,7 @@ $('#engineSeg').addEventListener('click', e => {
 const TEMPLATES = [
   {
     id: 'daily', name: '我的常用', desc: '常规吊牌 · 保留细节',
-    params: { filterSpeckle: 8, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 10, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
     post: { merge: true, tol: 50, frag: true, fragTol: 6 }
@@ -1224,14 +1224,14 @@ const TEMPLATES = [
   },
   {
     id: 'artwork', name: '插画精细', desc: '自研 · 圆形物体完美还原 + 细节保留',
-    params: { filterSpeckle: 6, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 6, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
     post: { merge: true, tol: 150, frag: true, fragTol: 6 }
   },
   {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
-    params: { filterSpeckle: 8, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 10, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
     post: { merge: true, tol: 200, frag: true, fragTol: 6 }
@@ -1245,14 +1245,14 @@ const TEMPLATES = [
   },
   {
     id: 'faithful', name: '高保真', desc: '细节优先 · 形状还原',
-    params: { filterSpeckle: 4, layerDifference: 12, maxColors: 0, cornerThreshold: 70, lengthThreshold: 2 },
+    params: { filterSpeckle: 4, layerDifference: 24, maxColors: 0, cornerThreshold: 70, lengthThreshold: 2 },
     adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 2400, denoise: false, smooth: 0, colors: 0 },
     post: { merge: false, tol: 30, frag: false, fragTol: 4 }
   },
   {
     id: 'photo', name: '多色照片', desc: '商品照片 · 减少色块',
-    params: { filterSpeckle: 8, layerDifference: 24, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 10, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
     post: { merge: true, tol: 100, frag: true, fragTol: 8 }
