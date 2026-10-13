@@ -51,10 +51,10 @@ ok(JSON.stringify(Object.keys(PRESETS.vtracer)) === JSON.stringify(['logo', 'pho
 ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 8, '主面板「去噪」默认值 = 8（不得改回 14）');
 ok(collect('vtracer', 'logo').filterSpeckle === 8, 'logo 使用去噪 8');
 ok(collect('vtracer', 'logo').hierarchical === 'cutout', 'logo 使用 cutout（实测优于 stacked）');
-ok(collect('vtracer', 'logo').simplify === undefined, 'logo 不使用 simplify（已证实降质）');
+ok(collect('vtracer', 'logo').simplify === 1, 'logo 使用 simplify 1（平滑来源，v5.4 恢复）');
 ok(collect('vtracer', 'vmde').filterSpeckle === 6, 'vmde（最高保真）使用去噪 6');
 ok(collect('vtracer', 'vmde').hierarchical === 'cutout', 'vmde 使用 cutout');
-ok(collect('vtracer', 'vmde').simplify === undefined, 'vmde 不再使用 simplify');
+ok(collect('vtracer', 'vmde').simplify === 1, 'vmde 使用 simplify 1');
 ok(collect('vtracer', 'photo').hierarchical === 'cutout', 'photo 使用 cutout');
 ok(collect('vtracer', 'line').simplify === undefined && collect('vtracer', 'line').hierarchical === 'stacked', 'line 仍为 stacked 且无 simplify');
 ok(collect('vtracer', 'pixel').simplify === undefined && collect('vtracer', 'pixel').hierarchical === 'stacked', 'pixel 仍为 stacked 且无 simplify');

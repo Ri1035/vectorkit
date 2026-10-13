@@ -66,6 +66,8 @@ function loadEngine(name) {
         const buf = await resp.arrayBuffer();
         await m.initWasm(new Response(buf, { headers: { 'Content-Type': 'application/wasm' } }));
         slot.mod = m;
+      } else if (name === 'imagetracer') {
+        slot.mod = await import('./vendor/imagetracer.js');
       } else if (name === 'svgo') {
         slot.mod = await import('./vendor/svgo.js');
       }
@@ -135,6 +137,14 @@ function canvasToBlob(canvas, format, quality) {
 }
 
 async function vectorize(opts) {
+  if (opts.engine === 'imagetracer') {
+    const m = await loadEngine('imagetracer');
+    const IT = m.default || m.ImageTracer;
+    if (!IT || typeof IT.imagedataToSVG !== 'function') throw new Error('ImageTracer 加载失败');
+    /* 注意：ImageTracer 是"调色板量化 + 逐色区描摹"，对全彩插画会产出**极多路径**（实测 bc 1024²
+       在 16 色下约 2.9 万条路径 / 5.8MB，32 色下达 6.4 万条 / 10.9MB）。故界面上标注为"实验"。 */
+    return IT.imagedataToSVG({ width: opts.w, height: opts.h, data: new Uint8ClampedArray(opts.rgba) }, opts.options);
+  }
   if (opts.engine === 'potrace') {
     const m = await loadEngine('potrace');
     const imgData = new ImageData(new Uint8ClampedArray(opts.rgba), opts.w, opts.h);
@@ -635,13 +645,19 @@ const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
 /* ============================ 预设与参数 ============================ */
 
 const PRESETS = {
+  imagetracer: {
+    std:    { name: '标准（16色）', desc: '节点极多 · 体积大（实验）', opts: { numberofcolors: 16, ltres: 1, qtres: 1, pathomit: 8 } },
+    detail: { name: '高细节（32色）', desc: '最保真 · 体积可达数十 MB', opts: { numberofcolors: 32, ltres: 0.5, qtres: 0.5, pathomit: 2 } },
+    lean:   { name: '少节点（12色）', desc: '体积优先 · 细节让步', opts: { numberofcolors: 12, ltres: 2, qtres: 2, pathomit: 64 } },
+    blur:   { name: '选择性模糊', desc: '按对比度去噪（blurdelta）', opts: { numberofcolors: 16, ltres: 1, qtres: 1, pathomit: 8, blurradius: 2, blurdelta: 30 } }
+  },
   vtracer: {
-    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
+    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, hierarchical: 'stacked', filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', hierarchical: 'stacked', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } },
-    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 2 } }
+    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 2 } }
   },
   potrace: {
     sharp:  { name: '锐利线条', desc: '拐角保留，几何图形', opts: { turdsize: 2, alphamax: 0, opticurve: 1, opttolerance: 0.2, extractcolors: 0, turnpolicy: 4 } },
@@ -659,6 +675,12 @@ const SCHEMA = {
     { key: 'cornerThreshold', label: '拐角阈值', min: 0, max: 180, step: 1, def: 60 },
     { key: 'lengthThreshold', label: '细节保留度', min: 0, max: 20, step: 1, def: 4 }
   ],
+  imagetracer: [
+    { key: 'numberofcolors', label: '颜色数（越少越省）', min: 2, max: 64, step: 1, def: 16 },
+    { key: 'pathomit', label: '丢弃短路径（去噪）', min: 0, max: 128, step: 1, def: 8 },
+    { key: 'ltres', label: '直线拟合容差', min: 0.1, max: 4, step: 0.1, def: 1 },
+    { key: 'qtres', label: '曲线拟合容差', min: 0.1, max: 4, step: 0.1, def: 1 }
+  ],
   potrace: [
     { key: 'turdsize', label: '去噪（忽略斑点）', min: 0, max: 32, step: 1, def: 2 },
     { key: 'alphamax', label: '拐角平滑', min: 0, max: 1.334, step: 0.001, def: 1 },
@@ -668,6 +690,7 @@ const SCHEMA = {
 };
 
 const ADV = {
+  imagetracer: [],
   vtracer: [
     { key: 'clustering', label: '分区算法', type: 'select', options: [['color-cluster', '色彩聚类（通用）'], ['bw', '黑白二值'], ['watershed', '分水岭']] },
     { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠（上层覆盖下层）'], ['cutout', '无缝共用边界（马赛克）']] },
@@ -965,7 +988,11 @@ async function runVectorize(force) {
        任何逐路径改写几何的后处理都会重新撕开共享边界 → 自动跳过几何类后处理，
        仅保留同色合并与碎块清理（二者不移动共享边界）。 */
     const isCutout = options.hierarchical === 'cutout';
-    if (post1.enabled || post1.minArea > 0) {
+    /* ImageTracer 的输出可能是数 MB / 数万条路径，整表后处理会长时间卡住 → 直接跳过并提示 */
+    const isHeavyEngine = S1.engine === 'imagetracer';
+    if (isHeavyEngine) {
+      showMergeStatus(1, null, ['ImageTracer 为实验引擎：已跳过矢量后处理（避免数万路径卡死）']);
+    } else if (post1.enabled || post1.minArea > 0) {
       prog.stage(92, '矢量后处理');
       try {
         const mr = await mergeSameColorPaths(svgText, {
