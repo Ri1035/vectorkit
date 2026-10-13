@@ -914,7 +914,7 @@ async function runVectorize(force) {
     let svgoMs = 0;
     let refineRx = null;
 
-    /* v4.10 实验：重栅格化误差优化 —— 默认关闭；放在 SVGO 之前，
+    /* v5.0 实验：重栅格化误差优化 —— 默认关闭；放在 SVGO 之前，
        这样 SVGO 会再把坐标优化一遍（避免绝对坐标导致的体积膨胀）。
        fail-safe：误差没下降就不写回。 */
     const refineOn = !!(POST_UI[1].refine && $(POST_UI[1].refine) && $(POST_UI[1].refine).checked);
