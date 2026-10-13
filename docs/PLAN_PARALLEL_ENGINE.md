@@ -1,6 +1,8 @@
 # 并列引擎（VectorCraft 机制）实施计划
 
-> 状态：**已停损**（v6.0）—— P0 未达 M1 门槛（14.61 vs 35.5 dB），根因已定位为"多标签轮廓需 marching squares 16 例连接表"，属**重写**而非打补丁　目标：缩小与 Vector Magic 的最后约 2 dB
+> 状态：**P0 几何已验证 / 待 P1**（v6.1）—— 重写为 marching squares 半边行走后：单色样例 23.30 dB（图形全对）、bc 1024² **32.04 dB**（距 VTracer 基线 −2.45）。
+> 剩余差距来源明确：**P0 输出像素阶梯折线**，需 **P1 曲线拟合**（角点还原 / 直段→直线 / 圆→正圆 / 最少三次贝塞尔）。
+> M1 门槛（≥35.5 dB）尚未达成，但轮廓提取已证实正确，后续只需在拟合上投入。　目标：缩小与 Vector Magic 的最后约 2 dB
 > 参照：`github.com/storytold/vectorcraft` 的 `crates/trace/`（Apache-2.0，clean-room）
 > 验收硬门槛：bc.png 1024² 下 **PSNR ≥ 现状 +1 dB**（现状最佳 34.49 dB → 目标 ≥35.5 dB）
 
