@@ -299,7 +299,7 @@ function wireDrop(dropEl, inputHandler) {
 }
 
 /** 仅拖放（不劫持点击）：把预览区本身变成可投放区 */
-function wireDropZone(zone, inputHandler) {
+function wireDropZone(zone, inputHandler, pick) {
   ['dragenter', 'dragover'].forEach(ev =>
     zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev =>
@@ -308,6 +308,13 @@ function wireDropZone(zone, inputHandler) {
     const f = e.dataTransfer.files[0];
     if (f) inputHandler(f);
   });
+  /* 点击也能换图（忽略落在控件上的点击，避免误触发） */
+  if (pick) {
+    zone.addEventListener('click', e => {
+      if (e.target.closest('button,a,input,label,select,textarea')) return;
+      pick.click();
+    });
+  }
 }
 
 function statCard(items) {
@@ -1150,8 +1157,8 @@ const onFile1 = async file => {
 };
 
 /* 工具栏按钮：点击选择；预览区：直接拖放（同一处理函数） */
-wireDrop($('#import1'), onFile1);
-wireDropZone($('#stage1'), onFile1);
+const pick1 = wireDrop($('#import1'), onFile1);
+wireDropZone($('#stage1'), onFile1, pick1);
 
 $('#engineSeg').addEventListener('click', e => {
   const b = e.target.closest('button');

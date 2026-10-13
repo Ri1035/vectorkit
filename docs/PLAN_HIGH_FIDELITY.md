@@ -650,3 +650,13 @@ EPS 与 SVG **同源几何**。**我们的 EPS 是 CMYK 且同样极简 → 印�
 | 11 | **AI（Illustrator）导出** | 未做。竞品调研：现代 `.ai` 以 PDF 为主，**Vector Magic 导出的是 PostScript 型**（老格式，CorelDRAW X4 可读）；我们已有 EPS/DXF，若需可低成本补一个 `.ai` | 待排期 |
 | 12 | **参考项目：ArtCraft / VectorCraft**（`github.com/storytold`） | 已调研：纯 Rust + **WASM 可在浏览器跑**，**含位图描摹功能**；导出/导入 SVG、PDF、`.ai`、EPS、DXF；CLI + JSON 通道 + **MCP server**；宣称 2 万形状 ~27ms。可借鉴：① 描摹算法 ② 浏览器内 Rust/WASM 架构 ③ MCP/CLI 自动化接口 | 参考 |
 | 9 | **本地与远端 commit SHA 持续分叉** | `git push` 长期被代理阻断（`Empty reply`/`502`）→ 改用 `scripts/_push.cjs`（GitHub API）推送，而 API 生成的提交 SHA 必然不同 → 之后每次 `git push` 都被拒（non-fast-forward）。**网络恢复后应 `git fetch && git reset --hard origin/main` 对齐**；另注意 `_push.cjs` **不处理删除/重命名** | 运维 |
+
+### v5.9（2026-10-13）— 拖放报错修复 + 预览区点击换图 + 并列引擎 P0 原型（**未达门槛**）
+
+**修复**：① 拖放报错是 `#file1` 被 `renderStage1()` 重建后变 `null`（图片其实已载入）→ 移出 `#stage1`；
+② 预览区可点击换图（`wireDropZone` 增加点击，忽略控件上的点击）。
+
+**并列引擎 P0**（\`subpx.js\` + 计划文档 \`docs/PLAN_PARALLEL_ENGINE.md\`）：
+量化 → 标签图 → 4连通去噪 → 裂缝 → **覆盖率 α** → 闭环 → 折线。
+**实测最佳 14.61 dB（基线 34.49）→ 未达 M1 门槛（35.5）** → **按计划停损**，
+遗留问题指向"环路朝向 / 孔洞 nonzero 填充"。下一步先用**单色小样例**验证填充与朝向，再上真实图。
