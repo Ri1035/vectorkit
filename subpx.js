@@ -124,6 +124,65 @@ export function denoiseLabels(labels, w, h, minSize = 8) {
   return lab;
 }
 
+/* ---------- 3.5) 相邻近色区域合并（去碎片化）----------
+ * 实测发现：本引擎 303 path vs VTracer 94 path —— 差距主因是**区域分割粒度**，
+ * 典型情形是"同一条形状被一条细的异色线（多为抗锯齿中间色）切成两块"。
+ * 做法：统计**相邻**标签对，凡颜色距离 < 阈值的，用并查集合并；迭代若干轮直到稳定。
+ * 只合并「相邻且颜色近」的标签 → 不会把真正不同的区域糊在一起。
+ */
+const cdist = (a, b) => {
+  const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+  return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db) / 3;
+};
+
+function labelMean(src, labels, K) {
+  const acc = new Float64Array(K * 3), cnt = new Uint32Array(K);
+  for (let p = 0; p < labels.length; p++) {
+    const L = labels[p];
+    acc[L * 3] += src.data[p * 4]; acc[L * 3 + 1] += src.data[p * 4 + 1]; acc[L * 3 + 2] += src.data[p * 4 + 2];
+    cnt[L]++;
+  }
+  const mean = [];
+  for (let i = 0; i < K; i++) mean.push(cnt[i] ? [acc[i * 3] / cnt[i], acc[i * 3 + 1] / cnt[i], acc[i * 3 + 2] / cnt[i]] : null);
+  return { mean, cnt };
+}
+
+export function mergeSimilarLabels(src, labels, K, opts = {}) {
+  const { delta = 16, rounds = 3 } = opts;
+  const { width: w, height: h } = src;
+  if (delta <= 0) return { labels: Int32Array.from(labels), merged: 0 };
+  let cur = Int32Array.from(labels);
+  let before = K;
+  for (let round = 0; round < rounds; round++) {
+    const { mean } = labelMean(src, cur, before);
+    const parent = new Int32Array(before);
+    for (let i = 0; i < before; i++) parent[i] = i;
+    const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const uni = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; };
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x, A = cur[p];
+        if (x + 1 < w) { const B = cur[p + 1]; if (B !== A && mean[A] && mean[B] && cdist(mean[A], mean[B]) < delta) uni(A, B); }
+        if (y + 1 < h) { const B = cur[p + w]; if (B !== A && mean[A] && mean[B] && cdist(mean[A], mean[B]) < delta) uni(A, B); }
+      }
+    }
+    /* 重映射并压缩标签空间 */
+    const map = new Int32Array(before).fill(-1);
+    const next = new Int32Array(cur.length);
+    let k = 0;
+    for (let p = 0; p < cur.length; p++) {
+      const r = find(cur[p]);
+      if (map[r] < 0) map[r] = k++;
+      next[p] = map[r];
+    }
+    cur = next;
+    const changed = before - k;
+    before = k;
+    if (!changed) break;
+  }
+  return { labels: cur, merged: K - before };
+}
+
 /* ---------- 4) marching squares 半边 + 覆盖率 α ---------- */
 const cov = (data, p, from, to) => {
   const ar = from[0] - to[0], ag = from[1] - to[1], ab = from[2] - to[2];
@@ -238,27 +297,26 @@ export function contoursToSvg(loops, palette, w, h, opts = {}) {
 }
 
 export function traceToSvg(src, opts = {}) {
-  const { maxColors = 16, minSpeckle = 8, precision = 2, regionMean = true, fit = true, fitError = 0.9, cornerAngle = 100 } = opts;
+  const { maxColors = 16, minSpeckle = 8, precision = 2, regionMean = true, fit = true, fitError = 0.9, cornerAngle = 100, mergeDelta = 0 } = opts;
   const palette = quantize(src, maxColors);
-  const labels = denoiseLabels(labelMap(src, palette), src.width, src.height, minSpeckle);
+  const K0 = palette.length;
+  let labels = denoiseLabels(labelMap(src, palette), src.width, src.height, minSpeckle);
 
-  /* 用每个区域在原图中的**实际均值**作为填充色（而非调色板均值）——
-     量化盒的均值会把抗锯齿过渡像素混进来，导致整体偏色。 */
-  let fill = palette;
-  if (regionMean) {
-    const acc = new Float64Array(palette.length * 3), cnt = new Uint32Array(palette.length);
-    for (let p = 0; p < labels.length; p++) {
-      const L = labels[p];
-      acc[L * 3] += src.data[p * 4]; acc[L * 3 + 1] += src.data[p * 4 + 1]; acc[L * 3 + 2] += src.data[p * 4 + 2];
-      cnt[L]++;
-    }
-    fill = palette.map((c, i) => cnt[i] ? [acc[i * 3] / cnt[i], acc[i * 3 + 1] / cnt[i], acc[i * 3 + 2] / cnt[i]] : c);
-  }
+  /* 相邻近色区域合并（去碎片化）：合并「相邻且颜色近」的标签，直接消灭
+     "同一条形状被一条细异色线切成两块"的碎片 */
+  const mg = mergeDelta > 0 ? mergeSimilarLabels(src, labels, K0, { delta: mergeDelta }) : { labels, merged: 0 };
+  labels = mg.labels;
 
-  const loops = traceContours(src, labels, palette);
+  let K = 0;
+  for (let i = 0; i < labels.length; i++) if (labels[i] >= K) K = labels[i] + 1;
+  /* 用每个区域在原图中的**实际均值**作为填充色（合并后的标签空间） */
+  const lm = labelMean(src, labels, K);
+  const fill = regionMean ? lm.mean.map(c => c || [0, 0, 0]) : palette;
+
+  const loops = traceContours(src, labels, fill);
   return {
     svg: contoursToSvg(loops, fill, src.width, src.height, { precision, fit, fitError, cornerAngle }),
-    colors: palette.length, loops: loops.length, diag: traceContours.__diag || null,
+    colors: K, loops: loops.length, merged: K0 - K, diag: traceContours.__diag || null,
     pts: loops.reduce((s, l) => s + l.pts.length / 2, 0)
   };
 }
