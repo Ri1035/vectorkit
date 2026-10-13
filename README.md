@@ -9,15 +9,15 @@
 
 ## ✨ 项目简介
 
-VectorKit 是一个完全在浏览器本地运行的矢量图形转换工具，文件解析、描摹、压缩均不产生任何网络请求。内置 VTracer / Potrace 双描摹引擎，支持位图转矢量、矢量转位图、SVG 优化压缩与去背景；可导出面向印刷的 CMYK EPS 与面向切割的 DXF；提供「描摹分辨率」等质量档位与边缘/色块后处理，优化输出对 CorelDRAW X4 等老软件做了兼容处理。
+VectorKit 是一个完全在浏览器本地运行的矢量图形转换工具，文件解析、描摹、压缩均不产生任何网络请求。内置 **VTracer / Potrace / ImageTracer 三描摹引擎**，支持位图转矢量、矢量转位图、SVG 优化压缩与去背景；可导出面向印刷的 CMYK EPS 与面向切割的 DXF；提供「描摹分辨率」等质量档位与边缘/色块后处理，优化输出对 CorelDRAW X4 等老软件做了兼容处理。
 
 ## 🚀 特性亮点
 
 | 维度 | 说明 |
 | --- | --- |
-| 位图 → 矢量 | PNG / JPG / WebP / GIF / BMP 输入，VTracer 彩色描摹 + Potrace 黑白 / 海报化双引擎，参数可微调 |
+| 位图 → 矢量 | PNG / JPG / WebP / GIF / BMP 输入，VTracer 彩色描摹 + Potrace 黑白 / 海报化 + ImageTracer 高细节对照，参数可微调 |
 | 图像预处理 / 矢量后处理 | 降采样、去噪、保边平滑、颜色量化；碎块清理、边缘平滑、同色路径合并 |
-| 参数模板 | VTracer 6 套（Logo / 照片 / 线稿 / 海报扁平 / 像素画 / vmde）+ Potrace 3 套，一键套用 |
+| 参数模板 | VTracer 6 套（Logo / 照片 / 线稿 / 海报扁平 / 像素画 / vmde 最高保真）+ Potrace 3 套 + ImageTracer 4 套，一键套用 |
 | CMYK EPS 导出 | 印刷四色 EPS，支持透明底 |
 | DXF 导出 | AutoCAD R12 POLYLINE，面向切割 / CNC 流程 |
 | 质量档位 | 「描摹分辨率」关闭 / 自动 / ×2 / ×3（含 8M 像素安全预算） |
@@ -67,7 +67,9 @@ npm run dev
 | 文档 | 内容 |
 | --- | --- |
 | [docs/DESIGN.md](./docs/DESIGN.md) | 界面视觉规范（UI 唯一事实来源） |
+| [docs/PLAN_REVIEW_2026-10-13.md](./docs/PLAN_REVIEW_2026-10-13.md) | ★ **计划审查报告**：指标体系、计划状态总表、后续唯一待办清单 |
 | [docs/PLAN_HIGH_FIDELITY.md](./docs/PLAN_HIGH_FIDELITY.md) | 高清矢量化专项计划与执行进度 |
+| [docs/PLAN_PARALLEL_ENGINE.md](./docs/PLAN_PARALLEL_ENGINE.md) | 并列引擎（VectorCraft 机制）实施计划，**未接入生产** |
 | [docs/OPEN_SOURCE_METHODS.md](./docs/OPEN_SOURCE_METHODS.md) | 自研矢量化方案集（6 项算法） |
 | [docs/CHANGELOG.md](./docs/CHANGELOG.md) | 完整版本变更历史 |
 
@@ -77,6 +79,7 @@ npm run dev
 
 | 日期 | 修改内容 |
 | --- | --- |
+| 2026-10-13 | 文档索引补全（新增计划审查报告、并列引擎计划）；引擎表述与实际一致（补 ImageTracer） |
 | 2026-10-08 | 仓库整理：文档下沉至 `docs/`、构建脚本归位至 `scripts/`，新增文档索引 |
 | 2026-10-05 | README 精简为项目介绍，补充 topics 标签 |
 | 2026-10-05 | README 美化丰富：补充在线体验与参考来源，完善使用说明 |
