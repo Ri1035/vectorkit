@@ -24,7 +24,8 @@ const ENGINES = {
   vtracer: { mod: null, loading: null },
   potrace: { mod: null, loading: null },
   resvg: { mod: null, loading: null },
-  svgo: { mod: null, loading: null }
+  svgo: { mod: null, loading: null },
+  imagetracer: { mod: null, loading: null }
 };
 
 /* 引擎加载超时：网络抖动/代理拦截时避免永久挂起（曾表现为"卡在加载中"） */
@@ -1271,6 +1272,8 @@ function applyTemplate(tpl) {
   }
 
   S1.lastKey = '';
+  /* 参数已变：若已载入图片则自动重算 —— 否则用户会看到'结果还是上一个模板' */
+  if (S1.imageData) setTimeout(() => { runVectorize(false); }, 0);
   $$('#templates .preset').forEach(b => b.classList.toggle('on', b.dataset.tpl === tpl.id));
   const sum = $('#sumTpl');
   if (sum) sum.textContent = tpl.name;
