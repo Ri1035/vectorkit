@@ -1,3 +1,5 @@
+import { fitClosedPath } from './bezierfit.js';
+
 /* ============================================================================
  * 并列描摹引擎 · 并行描摹（v6.1 重写轮廓提取）
  *
@@ -213,7 +215,7 @@ export function traceContours(src, labels, palette) {
 const hex = c => '#' + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 
 export function contoursToSvg(loops, palette, w, h, opts = {}) {
-  const { precision = 2 } = opts;
+  const { precision = 2, fit = true, fitError = 0.9, cornerAngle = 100 } = opts;
   const p = Math.pow(10, precision);
   let body = '';
   for (const lp of loops) {
@@ -223,6 +225,12 @@ export function contoursToSvg(loops, palette, w, h, opts = {}) {
       d += 'L' + Math.round(pts[i] * p) / p + ' ' + Math.round(pts[i + 1] * p) / p;
     }
     d += 'Z';
+    if (fit) {
+      try {
+        const fd = fitClosedPath(lp.pts, { error: fitError, cornerAngle, precision });
+        if (fd) d = fd;
+      } catch (e) { /* 拟合失败则退回折线 */ }
+    }
     body += '<path fill="' + hex(palette[lp.label]) + '" d="' + d + '"/>';
   }
   return '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h +
@@ -230,7 +238,7 @@ export function contoursToSvg(loops, palette, w, h, opts = {}) {
 }
 
 export function traceToSvg(src, opts = {}) {
-  const { maxColors = 16, minSpeckle = 8, precision = 2, regionMean = true } = opts;
+  const { maxColors = 16, minSpeckle = 8, precision = 2, regionMean = true, fit = true, fitError = 0.9, cornerAngle = 100 } = opts;
   const palette = quantize(src, maxColors);
   const labels = denoiseLabels(labelMap(src, palette), src.width, src.height, minSpeckle);
 
@@ -249,7 +257,7 @@ export function traceToSvg(src, opts = {}) {
 
   const loops = traceContours(src, labels, palette);
   return {
-    svg: contoursToSvg(loops, fill, src.width, src.height, { precision }),
+    svg: contoursToSvg(loops, fill, src.width, src.height, { precision, fit, fitError, cornerAngle }),
     colors: palette.length, loops: loops.length, diag: traceContours.__diag || null,
     pts: loops.reduce((s, l) => s + l.pts.length / 2, 0)
   };
