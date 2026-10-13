@@ -150,6 +150,18 @@ async function svgoOptimize(svg, config) {
   return res && res.data ? res.data : svg;
 }
 
+/* 把 SVG 栅格化为指定宽度的 RGBA（供「重栅格化精修」评估误差） */
+async function renderRgba(svg, width) {
+  const { png, width: w, height: h } = await renderWithResvg(svg, width);
+  const bmp = await createImageBitmap(new Blob([png], { type: 'image/png' }));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  return { data: ctx.getImageData(0, 0, w, h).data, width: w, height: h };
+}
+
 async function renderWithResvg(svg, width, background) {
   const m = await loadEngine('resvg');
   const o = { fitTo: { mode: 'width', value: width } };
@@ -900,6 +912,34 @@ async function runVectorize(force) {
     let svgText = await vectorize({ engine: S1.engine, rgba, w: pw, h: ph, options });
     prog.stage(80, '矢量化');
     let svgoMs = 0;
+    let refineRx = null;
+
+    /* v4.10 实验：重栅格化误差优化 —— 默认关闭；放在 SVGO 之前，
+       这样 SVGO 会再把坐标优化一遍（避免绝对坐标导致的体积膨胀）。
+       fail-safe：误差没下降就不写回。 */
+    const refineOn = !!(POST_UI[1].refine && $(POST_UI[1].refine) && $(POST_UI[1].refine).checked);
+    if (refineOn && S1.engine === 'vtracer' && rgba && pw && ph) {
+      try {
+        prog.stage(84, '重栅格化精修');
+        const { refineByRaster } = await import('./refine.js');
+        const tgt = new ImageData(new Uint8ClampedArray(rgba), pw, ph);
+        const px = pw * ph;
+        const res = await refineByRaster(svgText, tgt, {
+          render: (s) => renderRgba(s, pw),
+          maxAnchors: px > 4e6 ? 8 : 16,
+          trials: px > 4e6 ? 8 : 12,
+          maxShift: 1.0,
+          timeBudgetMs: 8000,
+          precision: 2
+        });
+        if (res.improved) svgText = res.svg;
+        refineRx = res;
+        console.info('[精修] MSE', res.mseBefore.toFixed(2), '→', res.mseAfter.toFixed(2),
+          '| 采用', res.accepted, '| 渲染', res.renders, '次 |', Math.round(res.ms) + 'ms');
+      } catch (e) {
+        console.warn('重栅格化精修跳过', e);
+      }
+    }
 
     /* 老软件兼容模式跳过 SVGO：其紧凑输出（相对命令 / 合并路径）会加剧老解析器出错 */
     if (wantSvgo && exportMode !== 'legacy') {
@@ -1001,7 +1041,14 @@ async function runVectorize(force) {
     }
     const ms = performance.now() - t0;
     showVectorResult(svgText, ms, key);
-    if (svgoMs > 0) $('#hint1').textContent = `${ms.toFixed(0)} ms · SVGO ${svgoMs.toFixed(0)} ms`;
+    {
+      const parts = [`${ms.toFixed(0)} ms`];
+      if (svgoMs > 0) parts.push(`SVGO ${svgoMs.toFixed(0)} ms`);
+      if (refineRx) parts.push(refineRx.improved
+        ? `精修 MSE ${refineRx.mseBefore.toFixed(1)}→${refineRx.mseAfter.toFixed(1)}（${Math.round(refineRx.ms)}ms）`
+        : '精修无改善（已回滚）');
+      $('#hint1').textContent = parts.join(' · ');
+    }
     prog.done('完成 · ' + ms.toFixed(0) + 'ms');
   } catch (err) {
     console.error(err);
@@ -1362,6 +1409,7 @@ const POST_UI = {
     on: '#mergeOn', tol: '#mergeTol', tolV: '#mergeTolV', row: '#mergeTolRow',
     fragOn: '#fragOn', fragTol: '#fragTol', fragTolV: '#fragTolV', fragRow: '#fragRow',
     smooth: '#smoothEdge', smoothV: '#smoothEdgeV',
+    refine: '#refineOn',
     status: '#mergeStatus', sum: '#sumPost'
   },
   3: {
@@ -1384,7 +1432,8 @@ function collectPostOptions(i) {
     enabled: $(ui.on).checked,
     tolerance: parseInt($(ui.tol).value, 10) / 100,
     minArea: $(ui.fragOn).checked ? parseInt($(ui.fragTol).value, 10) : 0,
-    edgeSmooth: parseInt($(ui.smooth).value, 10) || 0
+    edgeSmooth: parseInt($(ui.smooth).value, 10) || 0,
+    refine: ui.refine && $(ui.refine) ? $(ui.refine).checked : false
   };
 }
 

@@ -829,6 +829,15 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           </div>
 
           <div class="row" style="margin-top:16px;margin-bottom:0">
+            <label for="refineOn" style="cursor:pointer;font-weight:600;color:var(--text)">重栅格化精修</label>
+            <span class="tip anchor-right" tabindex="0" aria-label="重栅格化精修说明">
+              ?
+              <span class="tip-pop" role="tooltip"><b>实验功能 · 默认关闭</b>。把结果重新栅格化、与原图逐像素比误差，再对误差最大的少量锚点做坐标下降微调。<br>实测（Bon Cho 800²）：MSE −3.0%、PSNR +0.14 dB，耗时约 6.5 s。<br><b>建议优先用「预处理 → 描摹分辨率 ×2」</b>（MSE −53%、约 +1.3 s），收益大得多。<br>误差未下降时自动整体回滚，不会写回更差的结果。</span>
+            </span>
+            <input type="checkbox" id="refineOn">
+          </div>
+
+          <div class="row" style="margin-top:16px;margin-bottom:0">
             <label for="smoothEdge">边缘平滑</label>
             <span class="tip anchor-right" tabindex="0" aria-label="边缘平滑说明">
               ?
