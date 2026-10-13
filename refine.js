@@ -148,7 +148,7 @@ function collectAnchors(subpaths) {
 }
 
 /** 平移一个锚点：锚点本身 + 相邻控制点同位移（局部刚体平移，保持切线方向） */
-function shiftAnchor(sp, gi, dx, dy) {
+export function shiftAnchor(sp, gi, dx, dy) {
   const segs = sp.segs;
   const seg = segs[gi];
   seg.to = { x: seg.to.x + dx, y: seg.to.y + dy };
@@ -161,7 +161,7 @@ function shiftAnchor(sp, gi, dx, dy) {
 }
 
 /** 深拷贝子路径（回滚用） */
-const cloneSubpaths = (sps) => sps.map(sp => ({
+export const cloneSubpaths = (sps) => sps.map(sp => ({
   closed: sp.closed,
   segs: sp.segs.map(s => ({
     cmd: s.cmd, to: { ...s.to },
