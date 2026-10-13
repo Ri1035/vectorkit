@@ -636,12 +636,12 @@ const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
 
 const PRESETS = {
   vtracer: {
-    logo:   { name: 'Logo 图标', desc: '扁平色块，边界锐利', opts: { clustering: 'color-cluster', hierarchical: 'stacked', filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1, hierarchical: 'stacked' } },
-    line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
+    line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, hierarchical: 'stacked', filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } },
-    vmde:   { name: 'vmde', desc: '无缝共用边界 + 曲线简化（实验档）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', simplify: 1, filterSpeckle: 14, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 2 } }
+    pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', hierarchical: 'stacked', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } },
+    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 2 } }
   },
   potrace: {
     sharp:  { name: '锐利线条', desc: '拐角保留，几何图形', opts: { turdsize: 2, alphamax: 0, opticurve: 1, opttolerance: 0.2, extractcolors: 0, turnpolicy: 4 } },
@@ -653,7 +653,7 @@ const PRESETS = {
 
 const SCHEMA = {
   vtracer: [
-    { key: 'filterSpeckle', label: '去噪（忽略小色块）', min: 0, max: 32, step: 1, def: 14 },
+    { key: 'filterSpeckle', label: '去噪（越小越保细节）', min: 0, max: 32, step: 1, def: 8 },
     { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 16 },
     { key: 'maxColors', label: '最大色数（0 为不限）', min: 0, max: 64, step: 1, def: 0 },
     { key: 'cornerThreshold', label: '拐角阈值', min: 0, max: 180, step: 1, def: 60 },
@@ -704,6 +704,7 @@ function renderPresets() {
     $('.p2', b).textContent = p.desc;
     b.addEventListener('click', () => {
       S1.preset = id;
+      S1.lastKey = '';              // 切预设必须让下次转换重新计算（否则会复用上次结果 → "不切换"的观感）
       renderPresets();
       renderParams();
     });
@@ -1128,7 +1129,8 @@ $('#engineSeg').addEventListener('click', e => {
 const TEMPLATES = [
   {
     id: 'daily', name: '我的常用', desc: '常规吊牌 · 保留细节',
-    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 8, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    adv: { hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
     post: { merge: true, tol: 50, frag: true, fragTol: 6, edge: 1 }
   },
@@ -1140,13 +1142,15 @@ const TEMPLATES = [
   },
   {
     id: 'artwork', name: '插画精细', desc: '自研 · 圆形物体完美还原 + 细节保留',
-    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 6, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    adv: { hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
     post: { merge: true, tol: 150, frag: true, fragTol: 6, edge: 3 }
   },
   {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
-    params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 8, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    adv: { hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
     post: { merge: true, tol: 200, frag: true, fragTol: 6, edge: 3 }
   },
@@ -1164,7 +1168,7 @@ const TEMPLATES = [
   },
   {
     id: 'photo', name: '多色照片', desc: '商品照片 · 减少色块',
-    params: { filterSpeckle: 14, layerDifference: 24, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    params: { filterSpeckle: 8, layerDifference: 24, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
     post: { merge: true, tol: 100, frag: true, fragTol: 8, edge: 2 }
   },

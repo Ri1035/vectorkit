@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-/* 回归守护：从 app.js 提取 PRESETS / SCHEMA / ADV 常量并断言关键默认值不被误改，
-   同时校验 index.html 与 app.js 的 UI 契约（元素 id 必须存在）。
-   用法：npm test */
+/* 回归守护：断言关键默认值不被误改，并校验 index.html 与 app.js 的 UI 契约。
+   用法：npm test
+   基线（2026-10-13 v5.3 起，双图实测确定）：默认 去噪8 + cutout + 无 simplify。 */
 
 const fs = require('fs');
 const path = require('path');
@@ -45,34 +45,37 @@ console.log('=== 预设集合 ===');
 console.log('  vtracer: ' + Object.keys(PRESETS.vtracer).join(', '));
 console.log('  potrace: ' + Object.keys(PRESETS.potrace).join(', '));
 
-console.log('\n=== 默认行为守护（v4.3 五档不得被改变）===');
+console.log('\n=== v5.3 默认基线（双图实测确定，不得随意回退）===');
 ok(JSON.stringify(Object.keys(PRESETS.vtracer)) === JSON.stringify(['logo', 'photo', 'line', 'poster', 'pixel', 'vmde']),
-  'vtracer 预设 = v4.3 的 5 档 + 唯一实验档 vmde');
-ok(collect('vtracer', 'logo').hierarchical === 'stacked', 'logo 仍为 stacked');
-ok(collect('vtracer', 'logo').simplify === undefined, 'logo 的 simplify 为 off（= v4.3 行为）');
-ok(collect('vtracer', 'line').simplify === undefined, 'line 的 simplify 为 off');
-ok(collect('vtracer', 'pixel').simplify === undefined, 'pixel 的 simplify 为 off');
-ok(collect('vtracer', 'poster').simplify === 1.5, 'poster 保持 simplify = 1.5');
+  'vtracer 预设 = logo/photo/line/poster/pixel/vmde');
+ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 8, '主面板「去噪」默认值 = 8（不得改回 14）');
+ok(collect('vtracer', 'logo').filterSpeckle === 8, 'logo 使用去噪 8');
+ok(collect('vtracer', 'logo').hierarchical === 'cutout', 'logo 使用 cutout（实测优于 stacked）');
+ok(collect('vtracer', 'logo').simplify === undefined, 'logo 不使用 simplify（已证实降质）');
+ok(collect('vtracer', 'vmde').filterSpeckle === 6, 'vmde（最高保真）使用去噪 6');
+ok(collect('vtracer', 'vmde').hierarchical === 'cutout', 'vmde 使用 cutout');
+ok(collect('vtracer', 'vmde').simplify === undefined, 'vmde 不再使用 simplify');
+ok(collect('vtracer', 'photo').hierarchical === 'cutout', 'photo 使用 cutout');
+ok(collect('vtracer', 'line').simplify === undefined && collect('vtracer', 'line').hierarchical === 'stacked', 'line 仍为 stacked 且无 simplify');
+ok(collect('vtracer', 'pixel').simplify === undefined && collect('vtracer', 'pixel').hierarchical === 'stacked', 'pixel 仍为 stacked 且无 simplify');
+ok(collect('vtracer', 'poster').simplify === 1.5, 'poster 保持 simplify = 1.5（"少节点"取向）');
 
 const advSimplify = ADV.vtracer.find(d => d.key === 'simplify');
-ok(advSimplify && advSimplify.def === 0, 'ADV simplify 默认值 = 0（不得改回 1）');
-
-console.log('\n=== vmde 档 ===');
-ok(collect('vtracer', 'vmde').hierarchical === 'cutout', 'vmde 使用 cutout（无缝共用边界）');
-ok(collect('vtracer', 'vmde').simplify === 1, 'vmde 使用 simplify = 1');
+ok(advSimplify && advSimplify.def === 0, 'ADV simplify 默认值 = 0');
 
 console.log('\n=== 下发守卫 ===');
 ok(collect('vtracer', 'logo').watershedDetail === undefined, '非分水岭档不下发 watershedDetail');
 ok(collect('vtracer', 'logo').optimize === undefined, 'optimize = 0 时不下发');
 ok(ADV.vtracer.some(d => d.key === 'watershedDetail' && d.def === 128), 'ADV watershedDetail 存在（默认 128）');
 
+console.log('\n=== 切换预设必须清结果缓存 ===');
+ok(/S1\.preset = id;[\s\S]{0,120}S1\.lastKey = ''/.test(src), "预设点击处理里有 S1.lastKey = ''");
+
 console.log('\n=== UI 契约（index.html 元素必须存在）===');
-for (const id of ['preRes', 'preSize', 'preDenoise', 'preSmooth', 'preColors', 'preUpsample']) {
-  const present = html.includes('id="' + id + '"');
-  if (id === 'preUpsample') ok(!present, '「小图自动上采样」复选框已由「描摹分辨率」下拉取代（不应残留）');
-  else ok(present, '#' + id + ' 存在');
+for (const id of ['preRes', 'preSize', 'preDenoise', 'preSmooth', 'preColors']) {
+  ok(html.includes('id="' + id + '"'), '#' + id + ' 存在');
 }
-ok(PRESETS && SCHEMA && ADV, 'PRESETS/SCHEMA/ADV 均可解析');
+ok(!html.includes('id="preUpsample"'), '旧「小图自动上采样」复选框不得残留');
 
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));
 process.exit(fail ? 1 : 0);
