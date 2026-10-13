@@ -1,6 +1,6 @@
 # 并列引擎（VectorCraft 机制）实施计划
 
-> 状态：**进行中**（v5.9 起）　目标：缩小与 Vector Magic 的最后约 2 dB
+> 状态：**已停损**（v6.0）—— P0 未达 M1 门槛（14.61 vs 35.5 dB），根因已定位为"多标签轮廓需 marching squares 16 例连接表"，属**重写**而非打补丁　目标：缩小与 Vector Magic 的最后约 2 dB
 > 参照：`github.com/storytold/vectorcraft` 的 `crates/trace/`（Apache-2.0，clean-room）
 > 验收硬门槛：bc.png 1024² 下 **PSNR ≥ 现状 +1 dB**（现状最佳 34.49 dB → 目标 ≥35.5 dB）
 

@@ -8,6 +8,22 @@
  * 若它能超过现有最佳（34.49 dB），则机制有效，剩余工作只是"用更少节点达到同样精度"的拟合问题；
  * 若打不过，说明机制在我们的场景无效 → 立即止损。
  * ========================================================================== */
+/* ============================================================================
+ * ⚠️⚠️ **状态：未达标 / 未接入** —— 请勿在产品中启用 ⚠️⚠️
+ *
+ * 实测（bc.png 1024²）：PSNR 14.61 dB（基线 VTracer 34.49 dB），**远未达 M1 门槛 35.5 dB**。
+ * 已定位到的**根因（4 轮）**：
+ *   1. 填充色误用外部标签；
+ *   2. 闭环 break 判断落在首轮迭代 → 0 条轮廓；
+ *   3. **裂缝只发了"内部在左/上"一侧的有向边** → 右侧/下侧区域的边界**无法被遍历**，
+ *      walk 只能跳到无关边 → 图上出现对角三角形；
+ *   4. 改为"每条裂缝双侧发边"后环数暴增（158 环 / 9.06 dB）—— 说明 **ad-hoc 裂缝行走在
+ *      多标签场景下从设计上就不可靠**。
+ *
+ * **正确结论**：多标签轮廓必须用**带 16 例连接表的 marching squares**（按每个 2×2 单元的
+ * 标签配置显式决定段的连接），而不是"裂缝 + 转角偏好"的启发式行走。那是**重写**而非打补丁。
+ * 本文件保留作为**研究记录与踩坑档案**，未被 app.js 引用，不影响任何默认路径。
+ * ========================================================================== */
 
 /* ---------- 1) 量化：中位切割（中位切分 + 最近色归属） ---------- */
 export function quantize(src, maxColors = 16) {
@@ -139,30 +155,36 @@ const key = (x, y) => x * 100000 + y;
 export function traceContours(src, labels, palette) {
   const { width: w, height: h, data } = src;
   const startMap = new Map();      // 起点 -> 边索引数组（鞍点可能有多条出边）
-  const edges = [];                // {x0,y0,x1,y1,label,inLabel,nx,ny,ox,oy}
-  const addEdge = (x0, y0, x1, y1, label, inside, nx, ny) => {
-    /* 覆盖率 α：像素 inside(px,py) 中"内部色"的占比 */
-    const px = inside % w, py = (inside - px) / w;
-    const CB = palette[label];                 // 外部色（label 是外部像素的标签）
-    const CA = palette[labels[inside]];         // 内部色
-    const a = coverage(data[inside * 4], data[inside * 4 + 1], data[inside * 4 + 2], CA, CB);
-    const off = a - 0.5;                        // 裂缝在像素中线，偏移 = α - 0.5
-    edges.push({ x0, y0, x1, y1, label, inLabel: labels[inside], nx, ny, ox: nx * off, oy: ny * off });
+  const edges = [];                // {x0,y0,x1,y1,inLabel,nx,ny,ox,oy}
+  /** 一条裂缝的两侧各发一条有向边（内部各为一侧）——
+      否则"右侧/下侧区域"的边界无法被遍历（v5.9 首版 bug：图上出现对角三角形） */
+  const addCrack = (x0, y0, x1, y1, pa, pb) => {
+    const la = labels[pa], lb = labels[pb];
+    if (la === lb) return;
+    const CA = palette[la], CB = palette[lb];
+    const cov = (p, from, to) => {
+      const a = coverage(data[p * 4], data[p * 4 + 1], data[p * 4 + 2], from, to);
+      return a - 0.5;                            // 裂缝在像素中线，偏移 = α - 0.5
+    };
+    /* pa 侧：内部在 (dx,dy) 的反方向 → 偏移沿 +n */
+    let oa = cov(pa, CA, CB), ob = cov(pb, CB, CA);
+    const dx = x1 - x0, dy = y1 - y0;
+    const nx = dy, ny = -dx;                      // 法线（指向 pa 一侧）
+    const s = (nx * (pa % w - pb % w) + ny * (((pa - pa % w) / w) - ((pb - pb % w) / w))) > 0 ? 1 : -1;
+    edges.push({ x0, y0, x1, y1, inLabel: la, ox: nx * oa * s, oy: ny * oa * s });
     if (!startMap.has(key(x0, y0))) startMap.set(key(x0, y0), []);
     startMap.get(key(x0, y0)).push(edges.length - 1);
+    /* pb 侧：反向 */
+    edges.push({ x0: x1, y0: y1, x1: x0, y1: y0, inLabel: lb, ox: nx * ob * s, oy: ny * ob * s });
+    if (!startMap.has(key(x1, y1))) startMap.set(key(x1, y1), []);
+    startMap.get(key(x1, y1)).push(edges.length - 1);
   };
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = y * w + x;
       const L = labels[p];
-      if (x + 1 < w && labels[p + 1] !== L) {
-        /* 右侧竖裂缝：内部在左 → 向下走；(x+1,y)→(x+1,y+1)，法线 +x，内部像素 (x,y) */
-        addEdge(x + 1, y, x + 1, y + 1, labels[p + 1], p, 1, 0);
-      }
-      if (y + 1 < h && labels[p + w] !== L) {
-        /* 底部横裂缝：内部在上 → 向左走；(x+1,y+1)→(x,y+1)，法线 +y，内部像素 (x,y) */
-        addEdge(x + 1, y + 1, x, y + 1, labels[p + w], p, 0, 1);
-      }
+      if (x + 1 < w) addCrack(x + 1, y, x + 1, y + 1, p, p + 1);
+      if (y + 1 < h) addCrack(x + 1, y + 1, x, y + 1, p, p + w);
     }
   }
   /* 连成闭环 */
@@ -188,8 +210,8 @@ export function traceContours(src, labels, palette) {
         if (used[c]) continue;
         const C = edges[c];
         const t = ((dirIdx(C.x1 - C.x0, C.y1 - C.y0) - inD) + 4) % 4;
-        /* 优先右转(+1)、再直行(0)、最后左转 —— 保证 4-连通语义 */
-        const rank = t === 1 ? 0 : t === 0 ? 1 : t === 3 ? 2 : 3;
+        /* 内部在左（left = (-dy,dx)，即索引 +1）→ 优先左转 t=1，再直行，再次左，最后右 */
+        const rank = t === 1 ? 0 : t === 0 ? 1 : t === 2 ? 2 : 3;
         if (rank < bestTurn) { bestTurn = rank; best = c; }
       }
       e = best;
