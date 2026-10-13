@@ -779,7 +779,10 @@ function sliderRow(def, val, onChange) {
 }
 
 function renderParams() {
-  const opts = PRESETS[S1.engine][S1.preset].opts;
+  /* 防御：引擎与预设必须匹配（引擎切换会重建预设按钮，若外部持有旧引用可能传入过期 id） */
+  const _P = PRESETS[S1.engine] && PRESETS[S1.engine][S1.preset];
+  if (!_P) { console.warn('预设与引擎不匹配，已忽略渲染：', S1.engine, S1.preset); return; }
+  const opts = _P.opts;
   const host = $('#params');
   host.innerHTML = '';
 
@@ -807,6 +810,8 @@ function renderParams() {
 }
 
 function collectOptions() {
+  const _P = PRESETS[S1.engine] && PRESETS[S1.engine][S1.preset];
+  if (!_P) { console.warn('预设与引擎不匹配，已回退到该引擎首个预设：', S1.engine, S1.preset); S1.preset = Object.keys(PRESETS[S1.engine])[0]; }
   const base = Object.assign({}, PRESETS[S1.engine][S1.preset].opts);
   const rows = $$('#params .row');
   SCHEMA[S1.engine].forEach((def, i) => {
