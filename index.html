@@ -318,6 +318,10 @@ button{font:inherit;color:inherit}
 .seg button.on{background:linear-gradient(180deg,#FFFFFF,var(--surface));color:#5A3FC0;box-shadow:var(--clay-1)}
 @media (prefers-color-scheme: dark){ .seg button.on{background:var(--surface-3);color:var(--c-violet)} }
 .seg button:disabled{opacity:.45;cursor:not-allowed}
+/* 引擎选择器：三个引擎一行放不下会被截断 → 改为两列网格，第三个独占一行 */
+.seg-eng{grid-auto-flow:row;grid-template-columns:1fr 1fr;gap:8px}
+.seg-eng button{white-space:normal;line-height:1.35;padding:9px 8px}
+.seg-eng button:nth-child(3){grid-column:1/-1}
 @media (max-width:767px){
   .seg button{min-height:40px;font-size:11.5px;padding:10px 5px;letter-spacing:-.01em}
   .presets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
@@ -343,7 +347,10 @@ button{font:inherit;color:inherit}
 .preset.on{background:linear-gradient(180deg,#F1EAFF,#E4D9FE);box-shadow:var(--clay-1),0 0 0 2px rgba(139,111,240,.55)}
 @media (prefers-color-scheme: dark){ .preset.on{background:linear-gradient(180deg,#3A2F5E,#2E2550)} }
 .preset .p1{font-size:12.5px;font-weight:700;display:block;line-height:1.4}
-.preset .p2{font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;line-height:1.4}
+.preset .p2{font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 卡片等高：标题 + 最多两行描述 */
+.presets .preset{min-height:58px;display:flex;flex-direction:column;justify-content:center}
 @media (max-width:767px){ .preset{min-height:var(--tap);display:flex;flex-direction:column;justify-content:center} }
 
 /* ---------- 参数行 ---------- */
@@ -715,10 +722,10 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           <div class="hint hidden" id="tplStatus" style="margin-top:10px"></div>
         </div>
         <div class="set-pane" data-pane="engine">
-          <div class="seg" id="engineSeg" style="margin-bottom:14px">
-            <button data-engine="vtracer" class="on" type="button">VTracer · 彩色</button>
-            <button data-engine="potrace" type="button">Potrace · 黑白</button>
-            <button data-engine="imagetracer" type="button">ImageTracer · 实验</button>
+          <div class="seg seg-eng" id="engineSeg" style="margin-bottom:14px">
+            <button data-engine="vtracer" class="on" type="button" title="VTracer · 全彩描摹（默认引擎）">VTracer · 彩色</button>
+            <button data-engine="potrace" type="button" title="Potrace · 黑白 / 黑白稿">Potrace · 黑白</button>
+            <button data-engine="imagetracer" type="button" title="ImageTracer · 实验引擎：纯保真更高，但节点与体积可能极大">ImageTracer · 实验</button>
           </div>
           <div class="presets" id="presets"></div>
         </div>

@@ -598,6 +598,12 @@ updatePreSummary();
  */
 
 const FOLD_GROUPS = {};
+const FOLD_ROOTS = [];
+
+/** 内容（预设/模板/参数）渲染后高度会变，需重新校准展开态高度，否则底部被裁 */
+function syncFoldHeights() {
+  for (const r of FOLD_ROOTS) { if (r && r._syncHeight) r._syncHeight(); }
+}
 
 function wireFold(rootId, defaultOpen = false, group = null) {
   const root = document.getElementById(rootId);
@@ -631,6 +637,7 @@ function wireFold(rootId, defaultOpen = false, group = null) {
   root._apply = apply;
 
   if (group) (FOLD_GROUPS[group] = FOLD_GROUPS[group] || []).push(root);
+  FOLD_ROOTS.push(root);
   apply(defaultOpen);
   head.addEventListener('click', () => apply(!root.classList.contains('open')));
 
@@ -640,7 +647,7 @@ function wireFold(rootId, defaultOpen = false, group = null) {
   };
 }
 
-const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace' };
+const ENGINE_LABEL = { vtracer: 'VTracer', potrace: 'Potrace', imagetracer: 'ImageTracer' };
 
 /* ============================ 预设与参数 ============================ */
 
@@ -733,6 +740,7 @@ function renderPresets() {
     });
     host.appendChild(b);
   });
+  syncFoldHeights();
 }
 
 function sliderRow(def, val, onChange) {
@@ -1286,6 +1294,7 @@ function renderTemplates() {
     b.addEventListener('click', () => applyTemplate(tpl));
     host.appendChild(b);
   });
+  syncFoldHeights();
 }
 
 /* ============================ 智能推荐 ============================

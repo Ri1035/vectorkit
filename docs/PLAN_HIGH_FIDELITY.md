@@ -592,4 +592,20 @@ photo 改 cutout；全部预设去掉 simplify；4 个配置模板同步下调�
 | 6 | **眼白 / 内部高光丢失** | 引擎结构边界；唯一零成本方案＝**素材改色**（如 #F0F0F0） | 待素材侧决策 |
 | 7 | TIFF 输入、批量处理 + ZIP 打包 | 未做 | 待排期 |
 | 8 | 旧模板「插画精细 / 平滑增强」的上采样受 `<800px` 门槛限制 | **已可通过「描摹分辨率 ×2」手动生效**；模板语义未改（避免行为突变） | 已说明 |
+| 10 | **对比度感知的噪声抑制预处理**（保细节 + 少碎块的**原理性解法**） | 未做：只抹掉低对比噪声、保留真实边缘（借鉴 ImageTracer 的 `blurradius/blurdelta` 选择性模糊），使引擎得以用低去噪而不产生噪声碎块 | 待排期 |
+| 11 | **AI（Illustrator）导出** | 未做。竞品调研：现代 `.ai` 以 PDF 为主，**Vector Magic 导出的是 PostScript 型**（老格式，CorelDRAW X4 可读）；我们已有 EPS/DXF，若需可低成本补一个 `.ai` | 待排期 |
+| 12 | **参考项目：ArtCraft / VectorCraft**（`github.com/storytold`） | 已调研：纯 Rust + **WASM 可在浏览器跑**，**含位图描摹功能**；导出/导入 SVG、PDF、`.ai`、EPS、DXF；CLI + JSON 通道 + **MCP server**；宣称 2 万形状 ~27ms。可借鉴：① 描摹算法 ② 浏览器内 Rust/WASM 架构 ③ MCP/CLI 自动化接口 | 参考 |
 | 9 | **本地与远端 commit SHA 持续分叉** | `git push` 长期被代理阻断（`Empty reply`/`502`）→ 改用 `scripts/_push.cjs`（GitHub API）推送，而 API 生成的提交 SHA 必然不同 → 之后每次 `git push` 都被拒（non-fast-forward）。**网络恢复后应 `git fetch && git reset --hard origin/main` 对齐**；另注意 `_push.cjs` **不处理删除/重命名** | 运维 |
+
+### v5.5（2026-10-13）— UI 布局修正 + 竞品导出物深析 ✅
+
+**UI**：引擎选择器改两列网格（第三个独占一行）→ 修复按钮文字被 ellipsis 截断；
+预设卡等高 + 描述限两行。**用无头 Edge 实拍复核**，不凭代码猜。
+
+**竞品导出物深析**（用户导出的 bc.svg/eps/ai）：
+**VM 的 EPS 是 RGB（非 CMYK）且极简 PS（无 clip/gsave）**；其 `.ai` 是 **PostScript 型**（老格式）；
+EPS 与 SVG **同源几何**。**我们的 EPS 是 CMYK 且同样极简 → 印刷色彩空间领先**。
+
+**Backlog 新增**：对比度感知降噪（保细节+少碎块的原理解法）、AI 导出、ArtCraft/VectorCraft 参考。
+
+
