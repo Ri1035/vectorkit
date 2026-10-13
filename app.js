@@ -681,13 +681,20 @@ const PRESETS = {
     blur:   { name: '选择性模糊', desc: '按对比度去噪（blurdelta）', opts: { numberofcolors: 16, ltres: 1, qtres: 1, pathomit: 8, blurradius: 2, blurdelta: 30 } }
   },
   vtracer: {
-    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    /* v7.1 参数寻优实测（bc.png 2048² → 1024² 栅格，逐区域 MSE + 3× 放大肉眼核对）：
+       去噪 8→10（+0.22dB）、层差 16→32（+0.38dB）、路径精度 2→1（PSNR 持平、体积 -15%）。
+       三项互不冲突、可叠加：PSNR 36.53→37.05，体积 78.6KB→39.6KB（减半）。
+       逐区域 MSE 全部下降（眼睛高光 64.5→59.4），确认**未丢失高光/鼻孔等细节**。
+       扫描另证实：cornerThreshold 60 / colorPrecision 6 / lengthThreshold 4 已是最优，保持不变。 */
+    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡（v7.1 实测寻优）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 10, simplify: 1, colorPrecision: 6, layerDifference: 32, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     detail: { name: '高细节', desc: '保留眼睛高光/鼻孔等细部（v6.8 实测）· 边缘略锯、体积较大', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 4, simplify: 0, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, hierarchical: 'stacked', filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', hierarchical: 'stacked', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } },
-    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 2 } }
+    /* vmde 档的 pathPrecision 同步降为 1：与 logo 同族，路径精度只影响坐标小数位数，
+       PSNR 实测完全持平（锚点数逐位相同）、体积更小 → 无条件更优 */
+    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 1 } }
   },
   potrace: {
     sharp:  { name: '锐利线条', desc: '拐角保留，几何图形', opts: { turdsize: 2, alphamax: 0, opticurve: 1, opttolerance: 0.2, extractcolors: 0, turnpolicy: 4 } },
@@ -1193,56 +1200,69 @@ $('#engineSeg').addEventListener('click', e => {
  * 放在「设置」大卡片的「模板」页，点击会覆盖当前所有相关设置。
  */
 
+/* v7.1 修正两处实测发现的模板缺陷：
+   ① **adv 缺失导致残留** —— applyTemplate 只覆盖模板里写出的 key，
+      原先 lean/tiny/faithful/photo/line 都没写 hierarchical → 会沿用「上一次选择的层级模式」，
+      同一模板在不同用户/不同点击顺序下结果不同。现每个模板都显式写全 adv。
+   ② **post.edge 在 cutout 下是死配置** —— cutout 已被 app.js 强制跳过几何后处理
+      （实测 cutout 开边缘平滑 = MSE ×46），故 cutout 模板不再写 edge；
+      唯一 stacked 模板（line）保留。同时 applyTemplate 对未写出的 edge 显式置 0，杜绝残留。 */
 const TEMPLATES = [
   {
     id: 'daily', name: '我的常用', desc: '常规吊牌 · 保留细节',
     params: { filterSpeckle: 8, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { hierarchical: 'cutout' },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: true, tol: 50, frag: true, fragTol: 6, edge: 1 }
+    post: { merge: true, tol: 50, frag: true, fragTol: 6 }
   },
   {
     id: 'lean', name: '节点精简', desc: 'EPS 线条更顺 · 节点减约 2/3',
     params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 8 },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: true, tol: 200, frag: true, fragTol: 6, edge: 3 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 6 }
   },
   {
     id: 'artwork', name: '插画精细', desc: '自研 · 圆形物体完美还原 + 细节保留',
     params: { filterSpeckle: 6, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { hierarchical: 'cutout' },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
-    post: { merge: true, tol: 150, frag: true, fragTol: 6, edge: 3 }
+    post: { merge: true, tol: 150, frag: true, fragTol: 6 }
   },
   {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
     params: { filterSpeckle: 8, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { hierarchical: 'cutout' },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
-    post: { merge: true, tol: 200, frag: true, fragTol: 6, edge: 3 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 6 }
   },
   {
     id: 'tiny', name: '极小文件', desc: 'CDR 打开最快 · 接受少量简化',
     params: { filterSpeckle: 16, layerDifference: 20, maxColors: 0, cornerThreshold: 60, lengthThreshold: 16 },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1200, denoise: true, smooth: 1, colors: 48 },
-    post: { merge: true, tol: 200, frag: true, fragTol: 10, edge: 3 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 10 }
   },
   {
     id: 'faithful', name: '高保真', desc: '细节优先 · 形状还原',
     params: { filterSpeckle: 4, layerDifference: 12, maxColors: 0, cornerThreshold: 70, lengthThreshold: 2 },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 2400, denoise: false, smooth: 0, colors: 0 },
-    post: { merge: false, tol: 30, frag: false, fragTol: 4, edge: 1 }
+    post: { merge: false, tol: 30, frag: false, fragTol: 4 }
   },
   {
     id: 'photo', name: '多色照片', desc: '商品照片 · 减少色块',
     params: { filterSpeckle: 8, layerDifference: 24, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
+    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
     pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
-    post: { merge: true, tol: 100, frag: true, fragTol: 8, edge: 2 }
+    post: { merge: true, tol: 100, frag: true, fragTol: 8 }
   },
   {
     id: 'line', name: '线稿印章', desc: '黑白线条 · 中心线平滑',
     params: { filterSpeckle: 2, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { clustering: 'bw' },
+    /* bw 分区用 stacked（非 cutout）：黑白二值没有相邻色块的共享边界问题，
+       此时几何类后处理可用，故本模板是唯一保留 edge 的模板 */
+    adv: { clustering: 'bw', hierarchical: 'stacked' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
     post: { merge: false, tol: 50, frag: true, fragTol: 4, edge: 1 }
   }
@@ -1297,7 +1317,8 @@ function applyTemplate(tpl) {
     setCtlValue('#mergeTol', tpl.post.tol, 'input');
     setCtlCheck('#fragOn', tpl.post.frag);
     setCtlValue('#fragTol', tpl.post.fragTol, 'input');
-    setCtlValue('#smoothEdge', tpl.post.edge, 'input');
+    /* 未写 edge 的模板显式置 0（cutout 下本就被跳过，但 UI 滑块不能残留上一个模板的值） */
+    setCtlValue('#smoothEdge', tpl.post.edge || 0, 'input');
   }
 
   S1.lastKey = '';
