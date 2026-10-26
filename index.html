@@ -616,10 +616,25 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
 .dev-link:active{transform:translateY(1px)}
 .dev-link:focus-visible{outline:2px solid var(--c-violet);outline-offset:3px}
 
+/* 姊妹工具跳转：与 .dev-btn 同一套 clay 视觉，但语义是链接（新窗口打开） */
+.go-link{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:8px 14px;border-radius:var(--r-md);
+  font-size:12.5px;font-weight:600;color:var(--text-2);
+  background:var(--surface);box-shadow:var(--clay-1);
+  text-decoration:none;white-space:nowrap;
+  transition:box-shadow var(--ease),transform var(--ease),color var(--ease);
+}
+.go-link:hover{color:var(--text);transform:translateY(-2px);box-shadow:var(--clay-2)}
+.go-link:active{transform:translateY(1px)}
+.go-link:focus-visible{outline:2px solid var(--c-violet);outline-offset:3px}
+
 @media (max-width:640px){
   .top-actions{gap:8px}
   .dev-btn{padding:8px 11px}
   .dev-btn-t{display:none}
+  .go-link{padding:8px 11px}
+  .go-link-t{display:none}
   .dev-panel{width:min(300px, calc(100vw - 32px));right:-4px}
 }
 
@@ -648,6 +663,16 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
       </div>
     </div>
     <div class="top-actions">
+      <a class="go-link" href="https://koka-eraser.pages.dev" target="_blank" rel="noopener"
+         title="KOKA-Eraser · 框选消除艺术字/碎块（新窗口打开）">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 8.5V6a2 2 0 0 1 2-2h2.5"/><path d="M15.5 4H18a2 2 0 0 1 2 2v2.5"/>
+          <path d="M20 15.5V18a2 2 0 0 1-2 2h-2.5"/><path d="M8.5 20H6a2 2 0 0 1-2-2v-2.5"/>
+          <path d="M9 12h6" opacity=".45"/>
+        </svg>
+        <span class="go-link-t">框选消除</span>
+      </a>
       <div class="chip busy" id="engineChip"><span class="dot"></span><span id="engineText">引擎加载中…</span></div>
       <div class="dev-wrap">
         <button class="dev-btn" id="devBtn" type="button" aria-expanded="false" aria-controls="devPanel" aria-label="开发者信息">
