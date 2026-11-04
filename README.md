@@ -86,3 +86,17 @@ npm run dev
 
 **实验能力**：默认引擎为 VTracer；另提供 Potrace（黑白）与 ImageTracer（实验，保真更高但节点/体积极大）。
 重栅格化精修、对比度感知降噪均为**默认关闭**的实验项。
+
+## 孤儿分支索引
+
+以下分支与本仓库 `main` **无共同祖先**（unrelated histories），项目文件位于分支根目录，历史按原样保留。完整记录见 [MERGE-REPORT.md](MERGE-REPORT.md)。
+
+| 分支 | 来源仓库 | 技术栈 | 状态与验证 |
+|---|---|---|---|
+| `orphan/Vector-DB` | Vector-DB | 纯静态 HTML/JS（位图转矢量工具） | **冻结存档分支**：内容冻结于合并日（2026-11-04），除用户主动要求外不再维护/更新；验证通过（入口静态 200） |
+
+> `orphan/Vector-DB` 仅作历史存档，不随 `main` 演进；需要最新能力请使用 `main`。
+
+```bash
+git fetch origin && git checkout orphan/Vector-DB
+```
