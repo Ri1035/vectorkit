@@ -92,23 +92,47 @@ export function snapFillColors(svgText, opts = {}) {
 }
 
 /* ---------------------------------------------------------------------------
- * ② 剥离白色背景层：只删「近白 + 节点最多」的那一条路径。
+ * ② 剥离白色背景层：只删「近白 + 覆盖整个画布 + 节点最多」的那一条路径。
  * 预览区本身有白底，删掉后观感不变；小面积白色（眼白/高光）不会误删。
+ * 必须在「同色合并」之前执行：否则背景会先和图中的白色细节并成一条复合路径，
+ * 再被整条删除（白色主体/眼白一起消失）。
  * ------------------------------------------------------------------------ */
 export function dropBackgroundLayer(svgText, opts = {}) {
-  const { minChannel = 250, minNodes = 80 } = opts;
+  const { minChannel = 250, minNodes = 80, minCover = 0.9 } = opts;
   let doc;
   try {
     doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   } catch { return { svg: svgText, dropped: false, fill: '' }; }
   if (doc.querySelector('parsererror')) return { svg: svgText, dropped: false, fill: '' };
 
+  const root = doc.documentElement;
+  const vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  const canvasW = vb.length === 4 && vb[2] > 0 ? vb[2] : (parseFloat(root.getAttribute('width')) || 0);
+  const canvasH = vb.length === 4 && vb[3] > 0 ? vb[3] : (parseFloat(root.getAttribute('height')) || 0);
+
   let target = null, bestNodes = 0;
   for (const el of doc.querySelectorAll('path')) {
     const c = parseHexColor(el.getAttribute('fill'));
     if (!c || Math.min(c[0], c[1], c[2]) < minChannel) continue;
-    const n = ((el.getAttribute('d') || '').match(/[MmLlCcSsQqTtAaZz]/g) || []).length;
-    if (n >= minNodes && n > bestNodes) { bestNodes = n; target = el; }
+    const d = el.getAttribute('d') || '';
+    const n = (d.match(/[MmLlCcSsQqTtAaZz]/g) || []).length;
+    if (n < minNodes || n <= bestNodes) continue;
+    /* 覆盖面积判据：只有「包住画布 ≥90%」的近白路径才算背景。
+       没有这条判据时，插画里的大块白色（盘子、气泡、白衣服）也会被删掉。 */
+    if (canvasW > 0 && canvasH > 0) {
+      const nums = d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        const x = +nums[i], y = +nums[i + 1];
+        if (!isFinite(x) || !isFinite(y)) continue;
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+      const bw = maxX - minX, bh = maxY - minY;
+      if (!(bw >= canvasW * minCover && bh >= canvasH * minCover)) continue;
+    }
+    bestNodes = n;
+    target = el;
   }
   if (!target) return { svg: svgText, dropped: false, fill: '' };
   const fill = target.getAttribute('fill');
@@ -139,6 +163,9 @@ export function addStrokeCompensation(svgText, opts = {}) {
     el.setAttribute('stroke-width', String(width));
     el.setAttribute('stroke-linejoin', 'round');
     el.setAttribute('stroke-linecap', 'round');
+    /* 半透明填充必须同步描边透明度，否则会凭空多出一圈不透明描边 */
+    const fo = el.getAttribute('fill-opacity');
+    if (fo && !el.hasAttribute('stroke-opacity')) el.setAttribute('stroke-opacity', fo);
     stroked++;
   });
   return { svg: new XMLSerializer().serializeToString(doc.documentElement), stroked };

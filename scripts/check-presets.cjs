@@ -232,13 +232,65 @@ console.log('\n=== 卡死防护（2026-11-07 审查）===');
 console.log('\n=== 质量修复三件套（v8.5）===');
 {
   for (const id of ['fillSnap', 'dropBg', 'strokeComp']) ok(html.includes('id="' + id + '"'), '#' + id + ' 存在');
-  ok(!/id="fillSnap" checked/.test(html), '近似色合并默认关闭（实测会破坏复合路径绕向）');
+  ok(/id="fillSnap" checked/.test(html), '近似色合并默认开启（v8.6 已修复挖空）');
   ok(/id="dropBg" checked/.test(html) && /id="strokeComp" checked/.test(html),
     '剥离背景 / 同色描边补偿默认开启');
   const en = fs.readFileSync(path.join(root, 'svg-enhance.js'), 'utf8');
   ok(/export function snapFillColors/.test(en) && /export function dropBackgroundLayer/.test(en)
     && /export function addStrokeCompensation/.test(en), 'svg-enhance.js 三个函数齐全');
   ok(/stroke-linejoin', 'round'/.test(en), '描边补偿设置 round 连接');
+}
+
+console.log('\n=== 管线冲突修复（v8.6）===');
+{
+  const mp = fs.readFileSync(path.join(root, 'merge-paths.js'), 'utf8');
+  /* ① 回插只允许动真正参与并集的元素；旧实现按颜色整组删除 → 未并集元素被删出白洞 */
+  ok(/firstEl/.test(mp) && /new Set\(included\.map\(c => c\.el\)\)/.test(mp),
+    '同色合并回插只替换/删除参与并集的元素（防白洞）');
+  ok(!/groupIndex/.test(mp), '不再按颜色整组回插');
+  /* ② 退化子路径（<3 段）单独剔除，不拖累整条复合路径 */
+  ok(/退化子路径/.test(mp) && /valid\+\+/.test(mp), '退化子路径被单独剔除');
+  /* ③ 合并开关真正生效：merge=false 时只做碎块清理/平滑 */
+  ok(/merge = true/.test(mp) && /const doMerge = merge && mergeable\.length > 0/.test(mp),
+    'mergeSameColorPaths 支持 merge=false');
+  ok(/merge: post1\.enabled/.test(src) && /merge: post3\.enabled/.test(src),
+    '页面 1/3 都把「同色路径合并」开关传给合并器');
+  /* ④ 边界吸附重建必须保留每个子路径的 M/Z（旧实现把复合路径连成一条） */
+  const snapFn = mp.slice(mp.indexOf('export function snapAdjacentBoundaries'), mp.indexOf('export function unifyEqualRadiiInSvg'));
+  ok(/start: true/.test(snapFn) && /a\.start/.test(snapFn) && /a\.close/.test(snapFn),
+    '边界吸附保留子路径结构（M/Z 逐个重建）');
+  /* ⑤ 背景剥离必须在 SVGO / 同色合并之前，否则白背景会和白细节并成一条被整条删除 */
+  const dropIdx = src.indexOf("if (post1.dropBg)");
+  const svgoIdx = src.indexOf("if (wantSvgo && exportMode !== 'legacy')");
+  const mergeIdx = src.indexOf('await mergeSameColorPaths(svgText');
+  ok(dropIdx > 0 && dropIdx < svgoIdx && dropIdx < mergeIdx, '背景剥离顺序在 SVGO / 同色合并之前');
+  ok(/const bg = dropBackgroundLayer\(svgText/.test(src), '背景剥离调用保留');
+  const en = fs.readFileSync(path.join(root, 'svg-enhance.js'), 'utf8');
+  ok(/minCover = 0\.9/.test(en) && /bw >= canvasW \* minCover/.test(en),
+    '背景剥离要求覆盖 ≥90% 画布（不误删白色主体）');
+  /* ⑥ 上采样：width/height 与 viewBox 分离，禁止把 2 倍几何塞进 1 倍 viewBox */
+  ok(/function ensureSvgSize\(svgText, w, h, force = false, viewW = w, viewH = h\)/.test(src)
+    && /ensureSvgSize\(svgText, pw \/ upsampled, ph \/ upsampled, true, pw, ph\)/.test(src),
+    '上采样输出 width/height 与 viewBox 分离');
+  const dxf = fs.readFileSync(path.join(root, 'dxf-export.js'), 'utf8');
+  ok(/const pxToMm = mmPerPx \*/.test(dxf) && /viewBox/.test(dxf), 'DXF 按 viewBox/width 比例换算毫米');
+  /* ⑦ 颜色还原同时还原描边，避免描边补偿留下偏移色轮廓 */
+  const compat = fs.readFileSync(path.join(root, 'svg-compat.js'), 'utf8');
+  ok(/setAttribute\('stroke', back\)/.test(compat) && /setAttribute\('stroke', hex\(e\.from\)\)/.test(compat),
+    '背景/保护色还原同步描边颜色');
+  /* ⑧ 近似色合并按模板类型下发：插画类开，线稿/保真/极小文件关 */
+  const tplSrc = src.slice(src.indexOf('const TEMPLATES = ['), src.indexOf('function setCtlValue'));
+  const tplRows = [...tplSrc.matchAll(/id: '([a-z]+)'[\s\S]*?post: \{([^}]*)\}/g)]
+    .map(m => ({ id: m[1], post: m[2] }));
+  ok(tplRows.length === 9, '解析到 9 个模板的 post 配置（实得 ' + tplRows.length + '）');
+  const missingSnap = tplRows.filter(r => !/fillSnap:\s*(true|false)/.test(r.post)).map(r => r.id);
+  ok(missingSnap.length === 0, '每个模板都显式声明 fillSnap（缺失：' + (missingSnap.join(',') || '无') + '）');
+  const snapOn = tplRows.filter(r => /fillSnap:\s*true/.test(r.post)).map(r => r.id);
+  const snapOff = tplRows.filter(r => /fillSnap:\s*false/.test(r.post)).map(r => r.id);
+  for (const id of ['daily', 'lean', 'artwork', 'smooth', 'photo', 'editable']) {
+    ok(snapOn.includes(id), '模板 ' + id + ' 近似色合并开启');
+  }
+  for (const id of ['tiny', 'faithful', 'line']) ok(snapOff.includes(id), '模板 ' + id + ' 近似色合并关闭');
 }
 
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));

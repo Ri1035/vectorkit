@@ -238,13 +238,17 @@ const hasDrawable = text =>
    保持关闭，待改用多点采样 + 更严判据并通过多图验证后再启用。 */
 const DETAIL_RESTORE = false;
 
-function ensureSvgSize(svgText, w, h, force = false) {
+/* w/h = 导出尺寸（width/height 属性）；viewW/viewH = 几何所在网格（viewBox）。
+   小图自动 ×2 上采样时两者不同：几何在 2 倍网格上，显示尺寸要回到原图。
+   旧实现只传一个尺寸，引擎输出又没有 viewBox → 给 2 倍几何配了 1 倍 viewBox，
+   等于只导出左上角 1/4（小图丢失/错位的真正原因，2026-11-07 定位）。 */
+function ensureSvgSize(svgText, w, h, force = false, viewW = w, viewH = h) {
   try {
     const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
     if (doc.querySelector('parsererror')) return svgText;
     const el = doc.documentElement;
     if (!el.getAttribute('xmlns')) el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    if (!el.getAttribute('viewBox')) el.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    if (!el.getAttribute('viewBox')) el.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
     if (force || !el.getAttribute('width')) el.setAttribute('width', String(w));
     if (force || !el.getAttribute('height')) el.setAttribute('height', String(h));
     return new XMLSerializer().serializeToString(el);
@@ -1039,6 +1043,20 @@ async function runVectorize(force) {
       }
     }
 
+    const post1 = collectPostOptions(1);
+
+    /* v8.6 ①：剥离白色背景层必须在 SVGO 与同色合并**之前**执行。
+       SVGO 的 mergePaths 会把同 fill 的路径拼成一条复合路径，同色合并也会做同样的事；
+       一旦背景先与图中的白色细节（眼白/高光/白衣服）合并，再删「节点最多的那条」，
+       就会把它们一起删掉。放在这里时白色细节还是独立路径，不会被误删。
+       预览区本身有白底，删掉后观感不变。 */
+    if (post1.dropBg) {
+      try {
+        const bg = dropBackgroundLayer(svgText, { minChannel: 250, minNodes: 80 });
+        if (bg.dropped) svgText = bg.svg;
+      } catch (e) { console.warn('背景层剥离跳过', e); }
+    }
+
     /* 老软件兼容模式跳过 SVGO：其紧凑输出（相对命令 / 合并路径）会加剧老解析器出错 */
     if (wantSvgo && exportMode !== 'legacy') {
       prog.stage(90, 'SVG 优化');
@@ -1057,7 +1075,6 @@ async function runVectorize(force) {
 
     /* 矢量后处理（同色合并 / 碎块清理 / 边缘平滑）：放在 SVGO 之后，
        输出的对象数即最终交付文件里的对象数 */
-    const post1 = collectPostOptions(1);
     /* cutout = 引擎侧「无缝马赛克」：VTracer 让每条共享边界只拟合一次、相邻两面共用同一几何。
        任何逐路径改写几何的后处理都会重新撕开共享边界 → 自动跳过几何类后处理，
        仅保留同色合并与碎块清理（二者不移动共享边界）。 */
@@ -1069,9 +1086,10 @@ async function runVectorize(force) {
     } else if (post1.enabled || post1.minArea > 0) {
       prog.stage(92, '矢量后处理');
       try {
-        /* v8.5 ①：先做近似色归并，否则 ±2~3 的色差会让「同色合并」漏掉大量色块 */
+        /* v8.6 ②：近似色归并只服务于「同色合并」——合并关闭时必须跳过，
+           否则只会白白改动颜色、降低与原图的一致性。 */
         let snapInfo = null;
-        if (post1.fillSnap) {
+        if (post1.enabled && post1.fillSnap) {
           try {
             snapInfo = snapFillColors(svgText, { tol: 12 });
             if (snapInfo.changed) svgText = snapInfo.svg;
@@ -1081,6 +1099,7 @@ async function runVectorize(force) {
           tolerance: post1.tolerance,
           minArea: post1.minArea,
           edgeSmooth: post1.edgeSmooth,
+          merge: post1.enabled,
           geometry: !isCutout,
           /* 方案 C：把像素图交给碎块清理，用「与周围的对比度」区分设计细节与噪点 */
           imgData: (rgba && pw && ph) ? new ImageData(new Uint8ClampedArray(rgba), pw, ph) : null,
@@ -1089,16 +1108,11 @@ async function runVectorize(force) {
         svgText = mr.svg;
         if (isCutout) mr.warnings.push('无缝模式：已跳过几何后处理（保共用边界）');
         showMergeStatus(1, mr.stats, mr.warnings);
-        /* 以下两步都会移动/替换路径几何 → cutout 下必须跳过，否则破坏共享边界 */
-        if (!isCutout) {
-          /* 方案 B：相邻色块边界一致化——把错位 ≤1.2px 的相邻锚点吸附到同一位置，
-             消除「碎边」（相邻色块各自独立拟合导致的公共边界错位） */
-          try {
-            const snapRes = snapAdjacentBoundaries(svgText, { snapTol: 1.2 });
-            if (snapRes.snapped > 0) svgText = snapRes.svg;
-          } catch (e) {
-            console.warn('边界吸附跳过', e);
-          }
+        /* 以下两步都会移动/替换路径几何 → cutout 下必须跳过，否则破坏共享边界。
+           同时只在「同色合并」开启时执行：用户关掉合并却仍被悄悄改几何，属于语义不一致
+           （审查 2026-11-07）。顺序也必须是「先统一半径、再吸附边界」——反过来会让
+           半径统一把刚吸附好的锚点再次移开。 */
+        if (!isCutout && post1.enabled) {
           /* 方案 D：等半径统一——把尺寸相近的成组圆点（蘑菇帽白点、装饰点）统一半径，
              还原设计稿里"同一尺寸"的整齐感 */
           try {
@@ -1106,6 +1120,14 @@ async function runVectorize(force) {
             if (radRes.unified > 0) svgText = radRes.svg;
           } catch (e) {
             console.warn('等半径统一跳过', e);
+          }
+          /* 方案 B：相邻色块边界一致化——把错位 ≤1.2px 的相邻锚点吸附到同一位置，
+             消除「碎边」（相邻色块各自独立拟合导致的公共边界错位） */
+          try {
+            const snapRes = snapAdjacentBoundaries(svgText, { snapTol: 1.2 });
+            if (snapRes.snapped > 0) svgText = snapRes.svg;
+          } catch (e) {
+            console.warn('边界吸附跳过', e);
           }
         }
       } catch (e) {
@@ -1116,19 +1138,14 @@ async function runVectorize(force) {
       hideMergeStatus(1);
     }
 
-    /* v8.5 ②：剥离白色背景层（近白 + 节点最多的一条），避免它在编辑器里盖住图形、
-       以及抗锯齿边压在色块上形成白晕。预览区本身有白底，观感不变。 */
-    if (post1.dropBg) {
-      try {
-        const bg = dropBackgroundLayer(svgText, { minChannel: 250, minNodes: 80 });
-        if (bg.dropped) svgText = bg.svg;
-      } catch (e) { console.warn('背景层剥离跳过', e); }
-    }
     /* v8.5 ③：同色描边补偿（VM 的「勾画 + 填充」）——盖住相邻面之间 0.5px 的抗锯齿白缝。
-       切割类流程每个形状会被切两次，故做成可关闭选项。 */
+       切割类流程每个形状会被切两次，故做成可关闭选项。
+       v8.6：描边宽度按描摹上采样倍数换算 —— viewBox 用的是放大后的网格，
+       固定 0.7 会让 ×2 上采样的图实际只有 0.35 显示像素，白缝盖不住。 */
     if (post1.strokeComp) {
       try {
-        const st = addStrokeCompensation(svgText, { width: 0.7 });
+        const strokeW = 0.7 * (upsampled > 1 ? upsampled : 1);
+        const st = addStrokeCompensation(svgText, { width: strokeW });
         if (st.stroked) svgText = st.svg;
       } catch (e) { console.warn('描边补偿跳过', e); }
     }
@@ -1159,7 +1176,7 @@ async function runVectorize(force) {
       /* 描摹在上采样网格上进行：SVG 的 width/height 强制回写为原始尺寸，
          viewBox 保持放大网格（浏览器自动等比缩放显示/打印尺寸）；
          EPS 导出侧已支持 viewBox≠width 的等比缩放 */
-      svgText = ensureSvgSize(svgText, pw / upsampled, ph / upsampled, true);
+      svgText = ensureSvgSize(svgText, pw / upsampled, ph / upsampled, true, pw, ph);
     } else {
       svgText = ensureSvgSize(svgText, pw, ph);
     }
@@ -1295,7 +1312,7 @@ const TEMPLATES = [
     params: presetParams('logo'),
     adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: true, tol: 50, frag: true, fragTol: 6 }
+    post: { merge: true, tol: 50, frag: true, fragTol: 6, fillSnap: true }
   },
   {
     id: 'lean', name: '节点精简', desc: 'EPS 线条更顺 · 节点减约 2/3',
@@ -1303,7 +1320,7 @@ const TEMPLATES = [
     params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 8 },
     adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: true, tol: 200, frag: true, fragTol: 6 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 6, fillSnap: true }
   },
   {
     id: 'artwork', name: '插画精细', desc: '自研 · 圆形物体完美还原 + 细节保留',
@@ -1311,38 +1328,40 @@ const TEMPLATES = [
     params: { ...presetParams('logo'), filterSpeckle: 6 },
     adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
-    post: { merge: true, tol: 150, frag: true, fragTol: 6 }
+    post: { merge: true, tol: 150, frag: true, fragTol: 6, fillSnap: true }
   },
   {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
     params: presetParams('logo'),
     adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
-    post: { merge: true, tol: 200, frag: true, fragTol: 6 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 6, fillSnap: true }
   },
   {
     id: 'tiny', name: '极小文件', desc: 'CDR 打开最快 · 接受少量简化',
-    /* 有意与 logo 不同：高去噪 + 高容差 + 48 色量化（v7.2 实测层差 32 零收益，保持 20） */
+    /* 有意与 logo 不同：高去噪 + 高容差 + 48 色量化（v7.2 实测层差 32 零收益，保持 20）
+       v8.6：近似色合并关闭 —— 该档靠量化降色，再做近似色归并收益边际且会二次损失颜色 */
     params: { filterSpeckle: 16, layerDifference: 20, maxColors: 0, cornerThreshold: 60, lengthThreshold: 16 },
     adv: presetAdv('logo'),
     pre: { size: 1200, denoise: true, smooth: 1, colors: 48 },
-    post: { merge: true, tol: 200, frag: true, fragTol: 10 }
+    post: { merge: true, tol: 200, frag: true, fragTol: 10, fillSnap: false }
   },
   {
     id: 'faithful', name: '高保真', desc: '细节优先 · 形状还原',
     /* 有意与 logo 不同：低去噪 + 宽拐角 + 最细节。
-       v8.2：层差 24 → 16（对齐实测最优的 detail 档：PSNR 34.79 vs 34.09，白缺失更少） */
+       v8.2：层差 24 → 16（对齐实测最优的 detail 档：PSNR 34.79 vs 34.09，白缺失更少）
+       v8.6：合并关闭，近似色合并随之关闭（不改颜色，保持与原图逐色一致） */
     params: { filterSpeckle: 4, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: presetAdv('logo'),
     pre: { size: 2400, denoise: false, smooth: 0, colors: 0 },
-    post: { merge: false, tol: 30, frag: false, fragTol: 4 }
+    post: { merge: false, tol: 30, frag: false, fragTol: 4, fillSnap: false }
   },
   {
     id: 'photo', name: '多色照片', desc: '商品照片 · 减少色块',
     params: presetParams('logo'),
     adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
-    post: { merge: true, tol: 100, frag: true, fragTol: 8 }
+    post: { merge: true, tol: 100, frag: true, fragTol: 8, fillSnap: true }
   },
   {
     id: 'editable', name: '易编辑（叠加）', desc: '分层叠加 · 移动单块不露白',
@@ -1352,15 +1371,16 @@ const TEMPLATES = [
     params: presetParams('logo'),
     adv: { clustering: 'color-cluster', hierarchical: 'stacked' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: true, tol: 50, frag: true, fragTol: 6 }
+    post: { merge: true, tol: 50, frag: true, fragTol: 6, fillSnap: true }
   },
   {
     id: 'line', name: '线稿印章', desc: '黑白线条 · 中心线平滑',
-    /* 有意与 logo 不同：黑白二值分区 + stacked（无相邻色块共享边界问题），故唯一保留 edge */
+    /* 有意与 logo 不同：黑白二值分区 + stacked（无相邻色块共享边界问题），故唯一保留 edge。
+       v8.6：近似色合并关闭 —— 黑白线稿只有两个色，合并无收益，反而会损失抗锯齿过渡色。 */
     params: { filterSpeckle: 2, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: { clustering: 'bw', hierarchical: 'stacked' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
-    post: { merge: false, tol: 50, frag: true, fragTol: 4, edge: 1 }
+    post: { merge: false, tol: 50, frag: true, fragTol: 4, edge: 1, fillSnap: false }
   }
 ];
 
@@ -1415,6 +1435,8 @@ function applyTemplate(tpl) {
     setCtlValue('#fragTol', tpl.post.fragTol, 'input');
     /* 未写 edge 的模板显式置 0（cutout 下本就被跳过，但 UI 滑块不能残留上一个模板的值） */
     setCtlValue('#smoothEdge', tpl.post.edge || 0, 'input');
+    /* v8.6：近似色合并按模板类型显式设置（插画类开、线稿/保真类关），避免残留上一个模板的状态 */
+    setCtlCheck('#fillSnap', tpl.post.fillSnap);
   }
 
   S1.lastKey = '';
@@ -1626,8 +1648,8 @@ function collectPostOptions(i) {
     minArea: $(ui.fragOn).checked ? parseInt($(ui.fragTol).value, 10) : 0,
     edgeSmooth: parseInt($(ui.smooth).value, 10) || 0,
     refine: ui.refine && $(ui.refine) ? $(ui.refine).checked : false,
-    /* v8.5：三项质量修复。⚠️ 近似色合并（fillSnap）实测会把 PSNR 从 33.22 打到 25.20，
-       原因是归并后的复合路径出现绕向/填充规则问题，大面积被挖空 → 暂时默认关闭，待修。 */
+    /* v8.6：近似色合并已修复「合并后复合路径挖空」（根因是未参与并集的元素被整组删除）。
+       默认开启；faithful / tiny / line 模板会显式关闭（见 TEMPLATES）。 */
     fillSnap: ui.fillSnap && $(ui.fillSnap) ? $(ui.fillSnap).checked : false,
     dropBg: ui.dropBg && $(ui.dropBg) ? $(ui.dropBg).checked : true,
     strokeComp: ui.strokeComp && $(ui.strokeComp) ? $(ui.strokeComp).checked : true
@@ -2138,6 +2160,7 @@ $('#run3').addEventListener('click', async () => {
           tolerance: post3.tolerance,
           minArea: post3.minArea,
           edgeSmooth: post3.edgeSmooth,
+          merge: post3.enabled,
           onProgress: (p, label) => prog.stage(28 + Math.round(p * 0.22), label)
         });
         out = mr.svg;

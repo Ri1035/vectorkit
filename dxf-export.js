@@ -246,6 +246,13 @@ export function svgToDxf(svgText, opts = {}) {
   }
   const svg = doc.documentElement;
 
+  /* v8.6：viewBox 与声明 width 可能不同（小图 ×2 上采样描摹：几何在放大网格上，
+     width 是原始尺寸）。DXF 是毫米单位，必须按声明尺寸换算，否则尺寸会翻倍。 */
+  const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  const declW = parseFloat(svg.getAttribute('width'));
+  const vbScale = (vb.length === 4 && vb[2] > 0 && declW > 0) ? declW / vb[2] : 1;
+  const pxToMm = mmPerPx * (isFinite(vbScale) && vbScale > 0 ? vbScale : 1);
+
   /* <style> 里的 class → fill 规则 */
   const classFill = {};
   doc.querySelectorAll('style').forEach(st => {
@@ -352,8 +359,8 @@ export function svgToDxf(svgText, opts = {}) {
       const pts = closed ? ring.slice(0, -1) : ring;
       for (const [x, y] of pts) {
         out += dxfLine(0, 'VERTEX') + dxfLine(8, layer.name);
-        out += dxfLine(10, ((x - minX) * mmPerPx).toFixed(4))
-          + dxfLine(20, ((y - minY) * mmPerPx).toFixed(4))
+        out += dxfLine(10, ((x - minX) * pxToMm).toFixed(4))
+          + dxfLine(20, ((y - minY) * pxToMm).toFixed(4))
           + dxfLine(30, 0);
       }
       out += dxfLine(0, 'SEQEND') + dxfLine(8, layer.name);

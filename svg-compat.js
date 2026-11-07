@@ -179,6 +179,18 @@ export function toLegacySvg(svgText) {
   if (!w || !h) return svgText;
 
   /* 2. 视口规整为 0 0 w h，保证 viewBox 与 width/height 1:1，无需缩放 */
+  /* v8.6：若原 viewBox 与显示尺寸不一致（描摹上采样 ×2/×3 时会出现：
+     viewBox 是放大网格、width/height 是原始尺寸），直接改写 viewBox 会把图形裁掉一半。
+     先把根节点的全部子元素包进一个等比缩放的 <g>，再统一视口。 */
+  if (vbRaw.length === 4 && vbRaw[2] > 0 && vbRaw[3] > 0) {
+    const sx = w / vbRaw[2], sy = h / vbRaw[3];
+    if (Math.abs(sx - 1) > 1e-6 || Math.abs(sy - 1) > 1e-6) {
+      const g = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `scale(${+sx.toFixed(6)} ${+sy.toFixed(6)})`);
+      while (svg.firstChild) g.appendChild(svg.firstChild);
+      svg.appendChild(g);
+    }
+  }
   svg.setAttribute('viewBox', `0 0 ${fmt(w)} ${fmt(h)}`);
   svg.setAttribute('width', fmt(w));
   svg.setAttribute('height', fmt(h));
@@ -286,6 +298,12 @@ export function restoreBackgroundColor(svgText, bg, shade, tol = 6) {
     if (!c) return;
     if (Math.abs(c[0] - shifted[0]) <= tol && Math.abs(c[1] - shifted[1]) <= tol && Math.abs(c[2] - shifted[2]) <= tol) {
       el.setAttribute('fill', back);
+      /* v8.6：同色描边补偿会把 stroke 设成当时的 fill；只改 fill 会让描边保留偏移色，
+         在色块边缘露出一圈明显偏深的轮廓。 */
+      const sc = parse(el.getAttribute('stroke'));
+      if (sc && Math.abs(sc[0] - shifted[0]) <= tol && Math.abs(sc[1] - shifted[1]) <= tol && Math.abs(sc[2] - shifted[2]) <= tol) {
+        el.setAttribute('stroke', back);
+      }
       n++;
     }
   });
@@ -322,7 +340,9 @@ export function restoreProtectedColors(svgText, elements, tol = 40) {
   doc.querySelectorAll('path').forEach(el => {
     const rgb = parse(el.getAttribute('fill'));
     if (!rgb) return;
-    const nums = (el.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g) || [];
+    /* 先绝对化：同色合并输出的 d 常为相对命令（M365,857c0,1…），
+       直接按数字对取 bbox 会把增量当坐标，位置匹配随之失效。 */
+    const nums = absolutizePath(el.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g) || [];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i + 1 < nums.length; i += 2) {
       const x = +nums[i], y = +nums[i + 1];
@@ -342,6 +362,11 @@ export function restoreProtectedColors(svgText, elements, tol = 40) {
       /* 位置匹配：元素中心需落在该图元的 bbox 内（含 2px 容差） */
       if (e.cx < p.minX - 2 || e.cx > p.maxX + 2 || e.cy < p.minY - 2 || e.cy > p.maxY + 2) continue;
       p.el.setAttribute('fill', hex(e.from));
+      /* 同色描边补偿会把 stroke 设成偏移色，必须一起还原（否则边缘露出一圈异色） */
+      const sc = parse(p.el.getAttribute('stroke'));
+      if (sc && Math.abs(sc[0] - e.to[0]) + Math.abs(sc[1] - e.to[1]) + Math.abs(sc[2] - e.to[2]) <= tol) {
+        p.el.setAttribute('stroke', hex(e.from));
+      }
       p.rgb = e.from.slice();
       fixed++;
       matched = true;
@@ -363,6 +388,12 @@ export function restoreProtectedColors(svgText, elements, tol = 40) {
       }
       if (best && bestA <= 90) {
         best.el.setAttribute('fill', hex(e.from));
+        const sc = parse(best.el.getAttribute('stroke'));
+        if (sc) {
+          /* 描边等于偏移色时才还原，避免改到用户自己设置的描边 */
+          const dsc = Math.abs(sc[0] - best.rgb[0]) + Math.abs(sc[1] - best.rgb[1]) + Math.abs(sc[2] - best.rgb[2]);
+          if (dsc <= 12) best.el.setAttribute('stroke', hex(e.from));
+        }
         best.rgb = e.from.slice();
         fixed++;
       }

@@ -509,10 +509,19 @@ function maxSubpathArea(shape) {
 
 /** 形状是否闭合（合并/处理的前提） */
 function ensureClosed(shape, maxGap = 1) {
-  const kids = shape.className === 'CompoundPath' ? shape.children : [shape];
+  const kids = shape.className === 'CompoundPath' ? shape.children.slice() : [shape];
   let allClosed = true;
+  let valid = 0;
   for (const k of kids) {
-    if (!k.segments || k.segments.length < 3) { allClosed = false; continue; }
+    if (!k.segments || k.segments.length < 3) {
+      /* 退化子路径（0–2 个锚点，面积恒为 0）直接移除。
+         旧实现把整条复合路径判为"不可合并"，但回插时仍按同组处理 → 元素被删除却没并入并集，
+         留下整块空洞（v8.5「近似色合并 PSNR 33.2→25.2」的真正根因，2026-11-07 定位）。 */
+      if (shape.className === 'CompoundPath') k.remove();
+      else allClosed = false;
+      continue;
+    }
+    valid++;
     if (k.closed) continue;
     const n = k.segments.length;
     if (k.firstSegment.point.getDistance(k.lastSegment.point) <= maxGap) {
@@ -522,7 +531,7 @@ function ensureClosed(shape, maxGap = 1) {
       allClosed = false;
     }
   }
-  return allClosed;
+  return allClosed && valid > 0;
 }
 
 /**
@@ -577,7 +586,7 @@ function isHighContrastDetail(item, img, contrastKeep) {
 }
 
 export async function mergeSameColorPaths(svgText, opts = {}) {
-  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, adaptive = true, geometry = true, imgData = null, contrastKeep = 60, onProgress } = opts;
+  const { tolerance = 0.05, minArea = 0, edgeSmooth = 0, fitK = 0, circleTol = 0.02, alignTol = 1.5, ellipseTol = 0.08, adaptive = true, geometry = true, merge = true, imgData = null, contrastKeep = 60, onProgress } = opts;
   const warnings = [];
   const t0 = performance.now();
 
@@ -750,12 +759,16 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     shapesTotal: statsCollect.shapes
   };
 
-  const doMerge = mergeable.length > 0;
+  /* merge=false：只做碎块清理 / 逐元素平滑，不做同色布尔并集。
+     app.js 的「同色路径合并」复选框曾经只控制整段后处理是否执行，
+     勾掉合并、保留碎块清理时仍会静默合并（用户可见的对象数对不上）——2026-11-07 修正。 */
+  const doMerge = merge && mergeable.length > 0;
   const doFilter = minArea > 0;
   const doRefine = edgeSmooth > 0;      // 边缘平滑对单元素同样生效，必须计入早退判断
   if (!doMerge && !doFilter && !doRefine) {
     stats.ms = performance.now() - t0;
-    if (!doMerge) warnings.push('没有找到可合并的同色闭合路径组（需要同色 ≥ 2 个）');
+    if (!merge) warnings.push('同色路径合并已关闭（未做几何处理）');
+    else if (mergeable.length === 0) warnings.push('没有找到可合并的同色闭合路径组（需要同色 ≥ 2 个）');
     pushSkipWarnings(warnings, skipped);
     return { svg: svgText, stats, warnings };
   }
@@ -779,8 +792,9 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
   let done = 0;
   let anchorsPruned = 0;
 
-  for (const g of mergeable) {
+  for (const g of (doMerge ? mergeable : [])) {
     const items = [];
+    const included = [];          // 真正进入并集的原元素（回插时只允许动这些）
     try {
       for (const c of g.list) {
         const p = parseShape(paper, c.d);
@@ -789,6 +803,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         if (!kids.length) continue;
         if (!ensureClosed(p)) continue;      // 真正开放：不参与合并
         items.push(p);
+        included.push(c);
       }
       if (items.length < 2) continue;
 
@@ -798,7 +813,7 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
 
       // 碎块清理：面积过小 → 先看是否「与周围高对比」（高对比 = 设计细节，保留）
       if (doFilter && maxSubpathArea(acc) < minArea && !isHighContrastDetail(acc, imgData, contrastKeep)) {
-        g.list.forEach(c => drops.add(c));
+        included.forEach(c => drops.add(c));
         done++;
         continue;
       }
@@ -817,8 +832,13 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
         results.set(g.key, {
           d: dOut,
           rule: node.getAttribute('fill-rule') || 'nonzero',
-          removed: g.list.length - 1,
-          pruned
+          removed: included.length - 1,
+          pruned,
+          /* 只允许回插阶段替换/删除真正参与并集的元素。
+             未进入并集的同色元素（解析失败/开放路径）必须原地保留，
+             否则它们会被删掉但几何没有并入 → 白洞。 */
+          els: new Set(included.map(c => c.el)),
+          firstEl: included[0].el
         });
       }
     } catch (e) {
@@ -831,47 +851,47 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     }
   }
 
-  /* ---------- 单元素组：同样做碎块清理与边缘平滑 ---------- */
+  /* ---------- 未参与合并的元素：同样做碎块清理与边缘平滑 ---------- */
   if (doFilter || edgeSmooth > 0) {
     onProgress?.(82, '清理碎块');
-    for (const [, list] of groups) {
-      if (list.length >= 2) continue;
-      const c = list[0];
-      try {
-        const p = parseShape(paper, c.d);
-        if (!p) continue;
-        const kids = p.className === 'CompoundPath' ? p.children : [p];
-        if (!kids.length) continue;
-        if (!ensureClosed(p)) continue;
+    for (const [key, list] of groups) {
+      /* 合并开启时，多元素组里「已进入并集」的元素不再单独处理；
+         未进入并集的（解析失败/开放路径/单元素组）仍要逐个清理与平滑。
+         合并关闭时所有元素都走这里，否则勾掉「同色路径合并」后碎块清理完全不生效。 */
+      const res = results.get(key);
+      const pending = doMerge ? list.filter(c => !res || !res.els.has(c.el)) : list;
+      for (const c of pending) {
+        try {
+          const p = parseShape(paper, c.d);
+          if (!p) continue;
+          const kids = p.className === 'CompoundPath' ? p.children : [p];
+          if (!kids.length) continue;
+          if (!ensureClosed(p)) continue;
 
-        if (doFilter && maxSubpathArea(p) < minArea && !isHighContrastDetail(p, imgData, contrastKeep)) { drops.add(c); continue; }
+          if (doFilter && maxSubpathArea(p) < minArea && !isHighContrastDetail(p, imgData, contrastKeep)) { drops.add(c); continue; }
 
-        if (edgeSmooth > 0 && geometry) {
-          const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol, adaptive);
-          anchorsPruned += changed;
-          // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
-          if (changed > 0) {
-            stats.refinedShapes++;
-            const node = p.exportSVG({ precision: 2, asString: false });
-            const dOut = node.getAttribute('d');
-            if (dOut) {
-              elemResults.set(c.el, { d: dOut, rule: node.getAttribute('fill-rule') || 'nonzero' });
+          if (edgeSmooth > 0 && geometry) {
+            const changed = pruneAnchors(p, tolerance, edgeSmooth, fitK, circleTol, alignTol, ellipseTol, adaptive);
+            anchorsPruned += changed;
+            // 仅在确有改动时才替换（无谓替换会重写 d 并引入多余 transform）
+            if (changed > 0) {
+              stats.refinedShapes++;
+              const node = p.exportSVG({ precision: 2, asString: false });
+              const dOut = node.getAttribute('d');
+              if (dOut) {
+                elemResults.set(c.el, { d: dOut, rule: node.getAttribute('fill-rule') || 'nonzero' });
+              }
             }
           }
-        }
-      } catch (e) { /* 单个元素失败不影响整体 */ }
+        } catch (e) { /* 单个元素失败不影响整体 */ }
+      }
     }
   }
 
   /* ---------- 回插 DOM（保持 z 序） ---------- */
   onProgress?.(85, '写回结构');
-  const groupIndex = new Map();
-  let gi = 0;
-  for (const g of mergeable) {
-    if (!results.has(g.key)) continue;
-    g.list.forEach((c, idx) => groupIndex.set(c.el, { key: g.key, first: idx === 0, gi }));
-    gi++;
-  }
+  /* 说明：不再按「颜色分组」整组删除，而是按 results 里记录的
+     els（真正参与并集的元素）逐个判断 —— 同色但未参与并集的元素必须原地保留。 */
 
   const DROP_ATTRS = new Set([
     'd', 'transform', 'clip-path', 'mask', 'style', 'opacity', 'fill-opacity', 'stroke-opacity',
@@ -905,17 +925,16 @@ export async function mergeSameColorPaths(svgText, opts = {}) {
     // 碎块清理：面积过小的孤立碎块直接删除
     if (drops.has(c)) { c.el.remove(); dropped++; continue; }
 
-    const info = groupIndex.get(c.el);
-    const res = info ? results.get(info.key) : null;
+    const res = results.get(c.key);
 
-    if (!info || !res) {
+    if (!res || !res.els.has(c.el)) {
       // 未参与合并：若边缘平滑改动了它，用新 d 替换
       const elem = elemResults.get(c.el);
       if (elem) { applyShape(c, elem.d, elem.rule); refined++; }
       continue;
     }
 
-    if (!info.first) {
+    if (c.el !== res.firstEl) {
       c.el.remove();
       removed++;
       continue;
@@ -1297,7 +1316,7 @@ export function snapAdjacentBoundaries(svgText, opts = {}) {
     if (!ok) return;
     /* 简化解析：只处理绝对化的 M/L/C 与相对 m/l/c（其余路径跳过吸附） */
     const toks = d.match(/[MmLlCcZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g) || [];
-    let i = 0, started = false;
+    let i = 0;
     while (i < toks.length) {
       const t = toks[i++];
       const rel = t >= 'a' && t <= 'z';
@@ -1305,8 +1324,9 @@ export function snapAdjacentBoundaries(svgText, opts = {}) {
         let x = +toks[i++], y = +toks[i++];
         if (rel) { x += cx; y += cy; }
         cx = x; cy = y;
-        anchors.push({ x, y, ref: null });
-        started = true;
+        /* start 标记子路径起点：重建时必须重新写 M，否则多个子路径会被连成一条线
+           （复合路径 = 挖孔/多个色岛；旧实现只写一个 M，等于把整条复合路径毁掉）。 */
+        anchors.push({ x, y, ref: null, start: true });
       } else if (t === 'L' || t === 'l') {
         let x = +toks[i++], y = +toks[i++];
         if (rel) { x += cx; y += cy; }
@@ -1317,8 +1337,10 @@ export function snapAdjacentBoundaries(svgText, opts = {}) {
         if (rel) { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x3 += cx; y3 += cy; }
         cx = x3; cy = y3;
         anchors.push({ x: cx, y: cy, ref: null, c1: { x: x1, y: y1 }, c2: { x: x2, y: y2 } });
-      } else if (t === 'Z' || t === 'z') { /* 闭合 */ }
-      else { return; }   // 含其他命令 → 该路径不参与吸附（保守）
+      } else if (t === 'Z' || t === 'z') {
+        /* 逐子路径闭合标记（不能再用「整条 d 以 Z 结尾」判断，否则只有最后一个子路径闭合） */
+        if (anchors.length) anchors[anchors.length - 1].close = true;
+      } else { return; }   // 含其他命令 → 该路径不参与吸附（保守）
     }
     if (anchors.length < 2) return;
     paths.push({ el, anchors, d });
@@ -1371,15 +1393,16 @@ export function snapAdjacentBoundaries(svgText, opts = {}) {
 
   if (!snapped) return { svg: svgText, snapped: 0 };
 
-  /* 4) 重建 d（绝对坐标 M/L/C；控制点同步平移以保持切线） */
+  /* 4) 重建 d（绝对坐标 M/L/C；控制点同步平移以保持切线）
+        子路径按 M 重新起笔、按各自 Z 闭合 —— 复合路径的挖孔/多色岛必须原样保留。 */
   paths.forEach((p, pi) => {
     let out = '';
     p.anchors.forEach((a, ai) => {
       const mv = moved.get(pi + ':' + ai);
       const nx = mv ? mv.x : a.x, ny = mv ? mv.y : a.y;
       const sx = nx - a.x, sy = ny - a.y;
-      if (!out) {
-        out = 'M' + nx.toFixed(2) + ',' + ny.toFixed(2);
+      if (a.start) {
+        out += (out ? ' ' : '') + 'M' + nx.toFixed(2) + ',' + ny.toFixed(2);
       } else if (a.c1 && a.c2) {
         out += 'C' + (a.c1.x + sx).toFixed(2) + ',' + (a.c1.y + sy).toFixed(2)
           + ' ' + (a.c2.x + sx).toFixed(2) + ',' + (a.c2.y + sy).toFixed(2)
@@ -1387,12 +1410,9 @@ export function snapAdjacentBoundaries(svgText, opts = {}) {
       } else {
         out += 'L' + nx.toFixed(2) + ',' + ny.toFixed(2);
       }
+      if (a.close) out += 'Z';
     });
-    if (out) {
-      /* 原路径若以 Z 结尾则保留闭合 */
-      if (/[Zz]\s*$/.test(p.d)) out += 'Z';
-      p.el.setAttribute('d', out);
-    }
+    if (out) p.el.setAttribute('d', out);
   });
 
   return { svg: new XMLSerializer().serializeToString(doc.documentElement), snapped };
