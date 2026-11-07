@@ -59,7 +59,7 @@ ok(collect('vtracer', 'detail').hierarchical === 'cutout', 'detail 使用 cutout
 /* v7.1 参数寻优实测（用户追问"模版和参数都是最优了吗？"后做的全档位 + 单变量 + 组合扫描）：
    去噪 8→10 / 层差 16→32 / 路径精度 2→1，三项可叠加 → PSNR 36.53→37.05、体积 78.6→39.6KB。
    验收条件含**逐区域 MSE 不得上升**（防"PSNR 涨了但细节被丢"）——实测眼睛高光区 64.5→59.4。 */
-ok(collect('vtracer', 'logo').filterSpeckle === 10, 'logo 使用去噪 10（v7.1 实测最优，+0.22dB 且体积更小）');
+ok(collect('vtracer', 'logo').filterSpeckle === 8, 'logo 使用去噪 8（v8.2：用户实测"丢失"后从 10 回调）');
 ok(collect('vtracer', 'logo').layerDifference === 32, 'logo 使用层差 32（v7.1 实测最优，+0.38dB，最优区间 28~32）');
 ok(collect('vtracer', 'logo').pathPrecision === 1, 'logo 使用路径精度 1（PSNR 持平、体积 -15%）');
 /* 扫描证明确为最优、必须保持不变的项（回退即等于放弃实测结论） */
@@ -67,7 +67,7 @@ ok(collect('vtracer', 'logo').cornerThreshold === 60, 'logo 拐角 60 实测最�
 ok(collect('vtracer', 'logo').colorPrecision === 6, 'logo 颜色精度 6 实测最优（4 灾难性 22.55dB / 8 降至 35.24）');
 ok(collect('vtracer', 'logo').lengthThreshold === 4, 'logo 细节保留 4（实测 8 反而变差，保持 4）');
 ok(collect('vtracer', 'vmde').pathPrecision === 1, 'vmde 路径精度 1（与 logo 同族，无条件更优）');
-ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 10, '面板「去噪」兜底默认 = 10（与 logo 档对齐实测最优）');
+ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 8, '面板「去噪」兜底默认 = 8（与 logo 档对齐）');
 ok(SCHEMA.vtracer.find(d => d.key === 'layerDifference').def === 32, '面板「层间差异」兜底默认 = 32（与 logo 档对齐实测最优）');
 ok(ADV.vtracer.find(d => d.key === 'pathPrecision').def === 1, 'ADV 路径精度兜底默认 = 1');
 ok(collect('vtracer', 'logo').hierarchical === 'cutout', 'logo 使用 cutout（实测优于 stacked）');
@@ -96,8 +96,8 @@ console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
        'exports.TEMPLATES=TEMPLATES;exports.PRESETS=PRESETS;'].join('\n'))(box);
     const { TEMPLATES: T, PRESETS: P } = box;
     const ids = T.map(t => t.id);
-    ok(T.length === 8, `TEMPLATES 共 8 条（实得 ${T.length}）`);
-    ok(JSON.stringify(ids) === JSON.stringify(['daily', 'lean', 'artwork', 'smooth', 'tiny', 'faithful', 'photo', 'line']),
+    ok(T.length === 9, `TEMPLATES 共 9 条（实得 ${T.length}）`);
+    ok(JSON.stringify(ids) === JSON.stringify(['daily', 'lean', 'artwork', 'smooth', 'tiny', 'faithful', 'photo', 'editable', 'line']),
       '模板 id 与顺序未变：' + ids.join(','));
 
     /* 缺陷①：adv 必须解析出 clustering / hierarchical（否则会沿用上一次的选择） */
@@ -112,13 +112,14 @@ console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
 
     /* 实测数值：钉死每个模板实际生效的参数（引用预设的模板同样要等于该值） */
     const EXPECT_TPL = {
-      daily:    { filterSpeckle: 10, layerDifference: 32 },
+      daily:    { filterSpeckle: 8,  layerDifference: 32 },
       artwork:  { filterSpeckle: 6,  layerDifference: 32 },
-      smooth:   { filterSpeckle: 10, layerDifference: 32 },
-      faithful: { filterSpeckle: 4,  layerDifference: 24 },
-      photo:    { filterSpeckle: 10, layerDifference: 32 },
+      smooth:   { filterSpeckle: 8,  layerDifference: 32 },
+      faithful: { filterSpeckle: 4,  layerDifference: 16 },
+      photo:    { filterSpeckle: 8,  layerDifference: 32 },
       lean:     { filterSpeckle: 14, layerDifference: 16 },
       tiny:     { filterSpeckle: 16, layerDifference: 20 },
+      editable: { filterSpeckle: 8,  layerDifference: 32 },
       line:     { filterSpeckle: 2,  layerDifference: 16 },
     };
     for (const id of Object.keys(EXPECT_TPL)) {
@@ -148,6 +149,9 @@ console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
     const tiny = T.find(x => x.id === 'tiny');
     ok(tiny.params.filterSpeckle === 16 && tiny.params.layerDifference === 20,
       'tiny 有意保持 16/20（v7.2 实测层差 32 零收益）');
+    const edit = T.find(x => x.id === 'editable');
+    ok(edit && edit.adv.hierarchical === 'stacked',
+      'editable 模板为 stacked（移动单块不露白）');
   }
 }
 
@@ -227,3 +231,4 @@ console.log('\n=== 卡死防护（2026-11-07 审查）===');
 
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));
 process.exit(fail ? 1 : 0);
+

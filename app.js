@@ -699,7 +699,11 @@ const PRESETS = {
        三项互不冲突、可叠加：PSNR 36.53→37.05，体积 78.6KB→39.6KB（减半）。
        逐区域 MSE 全部下降（眼睛高光 64.5→59.4），确认**未丢失高光/鼻孔等细节**。
        扫描另证实：cornerThreshold 60 / colorPrecision 6 / lengthThreshold 4 已是最优，保持不变。 */
-    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡（v7.1 实测寻优）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 10, simplify: 1, colorPrecision: 6, layerDifference: 32, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
+    /* v8.2 修正：去噪 10 → 8。实测 bc-test（1280²，含 3×3 中值去噪）：
+       去噪 10 = PSNR 32.63 / 白缺失 9551 px；去噪 8 = 33.23 / 8805 px；
+       去噪 6 = 34.01 / 7914。10 是"丢细节最多"的一档，用户实测抱怨"丢失"。
+       取 8：+0.60 dB、白缺失 −8%，对象数只从 67 增到 95（不像 6 那样翻倍）。 */
+    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡（v8.2 修正为去噪 8）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, simplify: 1, colorPrecision: 6, layerDifference: 32, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     detail: { name: '高细节', desc: '保留眼睛高光/鼻孔等细部（v6.8 实测）· 边缘略锯、体积较大', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 4, simplify: 0, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, hierarchical: 'stacked', filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
@@ -719,7 +723,7 @@ const PRESETS = {
 
 const SCHEMA = {
   vtracer: [
-    { key: 'filterSpeckle', label: '去噪（越小越保细节）', min: 0, max: 32, step: 1, def: 10 },
+    { key: 'filterSpeckle', label: '去噪（越小越保细节）', min: 0, max: 32, step: 1, def: 8 },
     { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 32 },
     { key: 'maxColors', label: '最大色数（0 为不限）', min: 0, max: 64, step: 1, def: 0 },
     { key: 'cornerThreshold', label: '拐角阈值', min: 0, max: 180, step: 1, def: 60 },
@@ -1295,8 +1299,9 @@ const TEMPLATES = [
   },
   {
     id: 'faithful', name: '高保真', desc: '细节优先 · 形状还原',
-    /* 有意与 logo 不同：低去噪 + 宽拐角 + 最细节（层差 24 为实测最优点） */
-    params: { filterSpeckle: 4, layerDifference: 24, maxColors: 0, cornerThreshold: 70, lengthThreshold: 2 },
+    /* 有意与 logo 不同：低去噪 + 宽拐角 + 最细节。
+       v8.2：层差 24 → 16（对齐实测最优的 detail 档：PSNR 34.79 vs 34.09，白缺失更少） */
+    params: { filterSpeckle: 4, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
     adv: presetAdv('logo'),
     pre: { size: 2400, denoise: false, smooth: 0, colors: 0 },
     post: { merge: false, tol: 30, frag: false, fragTol: 4 }
@@ -1307,6 +1312,16 @@ const TEMPLATES = [
     adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
     post: { merge: true, tol: 100, frag: true, fragTol: 8 }
+  },
+  {
+    id: 'editable', name: '易编辑（叠加）', desc: '分层叠加 · 移动单块不露白',
+    /* v8.2 新增：cutout 是"马赛克"结构（相邻面共用边界），在编辑器里单独移动一块会撕出白缝。
+       stacked 是"下层完整、上层覆盖"，移动任意一块只会露出下层颜色，不产生空洞。
+       代价：PSNR 比 cutout 低约 0.6~1.2 dB（实测 4/32：32.72 vs 33.95），故不设为默认。 */
+    params: presetParams('logo'),
+    adv: { clustering: 'color-cluster', hierarchical: 'stacked' },
+    pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
+    post: { merge: true, tol: 50, frag: true, fragTol: 6 }
   },
   {
     id: 'line', name: '线稿印章', desc: '黑白线条 · 中心线平滑',
