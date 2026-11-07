@@ -226,6 +226,11 @@ function revoke(u) {
 
 const stripExt = n => n.replace(/\.[^.]+$/, '');
 
+/* 判断 SVG 是否有可绘制内容：空 <svg> 会被 resvg/canvas 渲染成一张空白图，
+   却一路"成功"到下载 —— 用户只会看到白图，不知道是文件本身没内容（审查 2026-11-07）。 */
+const hasDrawable = text =>
+  /<(path|rect|circle|ellipse|line|polyline|polygon|text|image|use)\b/i.test(text);
+
 /* 实验性开关（默认全关，避免影响既有质量基线） */
 /* 细节补点（眼白/高光还原）：判据与渲染比对逻辑已实现，但在纹理密集的插画
    （Baby Happy 蕨叶）上仍会补出多余元素——采样单点不够稳健。
@@ -1818,6 +1823,7 @@ const S2 = { svgText: '', svgUrl: '', outUrl: '', file: null, w: 0, h: 0, out: n
 async function loadSvgForRaster(file) {
   const text = await readSvgFile(file);
   if (!/<svg[\s>]/i.test(text)) throw new Error('这不是一个有效的 SVG 文件');
+  if (!hasDrawable(text)) throw new Error('这个 SVG 里没有任何可绘制内容（path / rect / text 等）');
   const meta = parseSvgMeta(text);
   S2.svgText = text;
   S2.file = file;
@@ -2051,6 +2057,7 @@ wireDrop($('#drop3'), async file => {
   try {
     const text = await readSvgFile(file);
     if (!/<svg[\s>]/i.test(text)) throw new Error('这不是一个有效的 SVG 文件');
+    if (!hasDrawable(text)) throw new Error('这个 SVG 里没有任何可绘制内容（path / rect / text 等）');
     S3.src = text;
     S3.file = file;
     S3.srcSize = new Blob([text]).size;
