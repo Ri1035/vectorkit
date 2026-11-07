@@ -657,13 +657,13 @@ EPS 与 SVG **同源几何**。**我们的 EPS 是 CMYK 且同样极简 → 印�
 | 1 | ~~重栅格化误差优化（DiffVG 思路，纯前端）~~ | ✅ **v5.0 已实施**（默认关闭；实测 MSE −3.0%/+0.14 dB，收益有限）。⚠️ **2026-11-07 交接实验**：扁平插画上几何精修/平滑均为负收益 → **不推广** | 已完成（不再投入） |
 | 2 | ~~与 Vector Magic 的同图同口径对照~~ | ✅ **已完成（v5.0）**：VM MSE 8.07 / PSNR 39.06 dB vs 我们最好 24.46 / 34.25 dB（**+4.8 dB**，且节点更少） | 已完成 |
 | 3 | ~~**两套配置系统合并**（`PRESETS` 与 `TEMPLATES`）~~ | ✅ **v8.0 已完成**：`presetParams/presetAdv` 让与 logo 同值的模板直接引用预设；有意不同的模板保留字面量并注明理由；测试改为求值断言 | 已完成 |
-| 4 | `palette`（固定调色板输入 UI） | 未做（`maxColors` 已可用；引擎为 OKLab 量化） | 待排期 |
+| 4 | `palette`（固定调色板输入 UI） | ❌ **不做**（用户 2026-11-07 决定）：`maxColors` 已可用，固定调色板属锦上添花 | 关闭 |
 | 5 | ImageTracer 借鉴：`rightangleenhance`（像素域直角增强）、`blurradius/blurdelta`（选择性模糊） | 未做 | 待排期 |
 | 6 | **眼白 / 内部高光丢失** | 引擎结构边界；唯一零成本方案＝**素材改色**（如 #F0F0F0） | 待素材侧决策 |
-| 7 | TIFF 输入、批量处理 + ZIP 打包 | 未做 | 待排期 |
+| 7 | TIFF 输入、批量处理 + ZIP 打包 | ❌ **不做**（用户 2026-11-07 决定）。批量+ZIP 原型已完成并实测通过（2 图 2.5s、ZIP 可正常解压），按决定撤回，补丁留存 `_work/patches/batch-zip-WIP.patch` | 关闭 |
 | 8 | 旧模板「插画精细 / 平滑增强」的上采样受 `<800px` 门槛限制 | **已可通过「描摹分辨率 ×2」手动生效**；模板语义未改（避免行为突变） | 已说明 |
 | 10 | **对比度感知的噪声抑制预处理**（保细节 + 少碎块的**原理性解法**） | ✅ **已实施**（面板「对比度感知降噪」，默认关闭；`preprocess.js` + `denoise.js`）；本条为旧登记，实际已在生产链路 | 已完成 |
-| 11 | **AI（Illustrator）导出** | 未做。竞品调研：现代 `.ai` 以 PDF 为主，**Vector Magic 导出的是 PostScript 型**（老格式，CorelDRAW X4 可读）；我们已有 EPS/DXF，若需可低成本补一个 `.ai` | 待排期 |
+| 11 | **AI（Illustrator）导出** | ❌ **不做**（用户 2026-11-07 决定）：已有 EPS/DXF 覆盖印刷与切割场景 | 关闭 |
 | 12 | **参考项目：ArtCraft / VectorCraft**（`github.com/storytold`） | 已调研：纯 Rust + **WASM 可在浏览器跑**，**含位图描摹功能**；导出/导入 SVG、PDF、`.ai`、EPS、DXF；CLI + JSON 通道 + **MCP server**；宣称 2 万形状 ~27ms。可借鉴：① 描摹算法 ② 浏览器内 Rust/WASM 架构 ③ MCP/CLI 自动化接口 | 参考 |
 | 9 | **本地与远端 commit SHA 持续分叉** | ✅ **2026-11-07 已解决**：本地 `git init` + `fetch` + `reset --hard origin/main` 后正常 `git push`；远端现仅 `main` 与 `orphan/Vector-DB` | 已解决 |
 | 13 | **几何后处理 / VM 四项能量联合优化** | ❌ **已证伪（2026-11-07 交接实验）**：VTracer 输出是像素精确边界，任何非零平滑都降质；零权重对照逐字节相同。见 `NEGATIVE_RESULTS.md` | 关闭 |
