@@ -14,11 +14,14 @@
 > ⚠️ **动手前先读 [`PLAN_REVIEW_2026-10-13.md`](./PLAN_REVIEW_2026-10-13.md)** ——
 > 它是**计划状态总表与下一步唯一待办清单**，并记录了 9 处已被证伪/失效的前提。
 > 其余计划文档均以它为准。
+> **开始任何优化前，另请先读 [`NEGATIVE_RESULTS.md`](./NEGATIVE_RESULTS.md)**，避免重复已证伪的路径。
 
 | 文档 | 说明 | 状态 |
 | --- | --- | --- |
 | [PLAN_REVIEW_2026-10-13.md](./PLAN_REVIEW_2026-10-13.md) | ★ **计划审查报告**：9 处站不住脚的前提、指标体系（观感指标一等公民）、**计划状态总表**、下一步清单、8 条纪律 | **单一事实来源** |
-| [PLAN_HIGH_FIDELITY.md](./PLAN_HIGH_FIDELITY.md) | 高清矢量化专项计划（v2）：平滑边缘 + 色块整合的迭代主线与执行进度 | 执行中 |
+| [NEGATIVE_RESULTS.md](./NEGATIVE_RESULTS.md) | ★ **负面结果清单**：几何平滑、亚像素、`simplify`、降噪换平滑等已证伪路径与重测条件 | 持续维护 |
+| [PLAN_HANDOVER_2026-11-07.md](./PLAN_HANDOVER_2026-11-07.md) | **交接实验落地计划**：几何后处理证伪结论、阶段 1–3、验收标准与进度 | 阶段 1 完成，阶段 2 待启动 |
+| [PLAN_HIGH_FIDELITY.md](./PLAN_HIGH_FIDELITY.md) | 高清矢量化专项计划（v2）：平滑边缘 + 色块整合的迭代主线与执行进度 | 执行中（参数寻优已收口） |
 | [PLAN_PARALLEL_ENGINE.md](./PLAN_PARALLEL_ENGINE.md) | 并列引擎计划：按 VectorCraft 机制做亚像素边界（含止损标准）。**未接入生产链路** | 进行中（P0/P1/去碎片化已完成） |
 | [PLAN_JOINT_OPTIMIZATION.md](./PLAN_JOINT_OPTIMIZATION.md) | C 方案计划：联合优化 / 可微光栅化 | **已废弃** —— 被 `PLAN_PARALLEL_ENGINE` 取代，仅历史留存 |
 | [SMOOTHING_PLAN.md](./SMOOTHING_PLAN.md) | 矢量输出平滑方案（v2.2 提案）：细节保留 + 减少锯齿 | 已并入主线 |
@@ -32,6 +35,7 @@
 | 文档 | 说明 |
 | --- | --- |
 | [OPEN_SOURCE_METHODS.md](./OPEN_SOURCE_METHODS.md) | 自研矢量化方案集：后处理管线中的 6 项自研算法（可独立复用） |
+| [handover/2026-11-07/](./handover/2026-11-07/) | 交接实验原始文档（5 篇）：结论、实测数据、负面清单、VM 算法参考、实验环境 |
 
 ## 📜 变更记录
 

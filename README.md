@@ -68,6 +68,8 @@ npm run dev
 | --- | --- |
 | [docs/DESIGN.md](./docs/DESIGN.md) | 界面视觉规范（UI 唯一事实来源） |
 | [docs/PLAN_REVIEW_2026-10-13.md](./docs/PLAN_REVIEW_2026-10-13.md) | ★ **计划审查报告**：指标体系、计划状态总表、后续唯一待办清单 |
+| [docs/NEGATIVE_RESULTS.md](./docs/NEGATIVE_RESULTS.md) | ★ **负面结果清单**：已证伪/不要重复的路径与重测条件 |
+| [docs/PLAN_HANDOVER_2026-11-07.md](./docs/PLAN_HANDOVER_2026-11-07.md) | 交接实验落地计划：几何后处理证伪结论、阶段与进度 |
 | [docs/PLAN_HIGH_FIDELITY.md](./docs/PLAN_HIGH_FIDELITY.md) | 高清矢量化专项计划与执行进度 |
 | [docs/PLAN_PARALLEL_ENGINE.md](./docs/PLAN_PARALLEL_ENGINE.md) | 并列引擎（VectorCraft 机制）实施计划，**未接入生产** |
 | [docs/OPEN_SOURCE_METHODS.md](./docs/OPEN_SOURCE_METHODS.md) | 自研矢量化方案集（6 项算法） |
@@ -79,6 +81,7 @@ npm run dev
 
 | 日期 | 修改内容 |
 | --- | --- |
+| 2026-11-07 | v7.5：接收交接实验（几何后处理证伪），新增 `NEGATIVE_RESULTS.md` 与 `PLAN_HANDOVER_2026-11-07.md`，归档交接书 |
 | 2026-11-07 | 安全清理（移除 2 个外传凭据的 workflow）＋ 测试脚本补回 ＋ 依赖/构建/许可/文档状态收口（v7.4） |
 | 2026-10-13 | 文档索引补全（新增计划审查报告、并列引擎计划）；引擎表述与实际一致（补 ImageTracer） |
 | 2026-10-08 | 仓库整理：文档下沉至 `docs/`、构建脚本归位至 `scripts/`，新增文档索引 |

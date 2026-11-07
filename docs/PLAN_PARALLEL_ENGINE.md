@@ -14,6 +14,11 @@
 > 直段→直线、正圆→圆弧、角点还原，以及在容差下真正做到"最少贝塞尔"。　目标：缩小与 Vector Magic 的最后约 2 dB
 > 参照：`github.com/storytold/vectorcraft` 的 `crates/trace/`（Apache-2.0，clean-room）
 > 验收硬门槛：bc.png 1024² 下 **PSNR ≥ 现状 +1 dB**（现状最佳 34.49 dB → 目标 ≥35.5 dB）
+>
+> ⚠️ **2026-11-07 交接实验补充**：在 **VTracer 输出**上做 VM 四项能量平滑/联合优化已证伪
+> （不优化 33.34 dB，四组权重 31.69–32.04 dB，零权重对照逐字节相同）。
+> 本计划是**独立分割引擎**，不受该负结论影响；但 P2' **不得**把 `vm_smooth` 套到 VTracer 输出上，
+> 只能用于本引擎自己的边界输出。证据见 `PLAN_HANDOVER_2026-11-07.md` / `NEGATIVE_RESULTS.md`。
 
 ---
 
