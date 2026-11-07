@@ -901,6 +901,32 @@ input[type=checkbox]{width:20px;height:20px;flex:none;cursor:pointer;accent-colo
           </div>
           <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
             <div class="row" style="margin:0">
+              <label for="fillSnap" style="cursor:pointer;font-weight:600;color:var(--text)">近似色合并</label>
+              <span class="tip" tabindex="0" aria-label="近似色合并说明">
+                ?
+                <span class="tip-pop" role="tooltip">把色差极小的填充色归并成同一个色，让「同色路径合并」真正生效。<br>描摹结果里同一视觉色常带 ±2~3 的色差，不归并就会被当成不同颜色各自成块 —— 这是「色块不合并 / 碎块多」的主因。<br>⚠️ 实验项：当前实现会让合并后的复合路径出现大面积挖空（bc 实测 PSNR 33.22 → 25.20），修好前请保持关闭。</span>
+              </span>
+              <input type="checkbox" id="fillSnap">
+            </div>
+            <div class="row" style="margin-top:14px">
+              <label for="dropBg" style="cursor:pointer;font-weight:600;color:var(--text)">剥离白色背景层</label>
+              <span class="tip" tabindex="0" aria-label="剥离背景说明">
+                ?
+                <span class="tip-pop" role="tooltip">删除「近白且面积最大」的那条背景路径。它在编辑器里是一块巨大的白板，移动它会盖住图形；其抗锯齿边也是边缘白晕的来源。预览区本身有白底，删除后观感不变。</span>
+              </span>
+              <input type="checkbox" id="dropBg" checked>
+            </div>
+            <div class="row" style="margin-top:14px;margin-bottom:0">
+              <label for="strokeComp" style="cursor:pointer;font-weight:600;color:var(--text)">同色描边补偿</label>
+              <span class="tip anchor-right" tabindex="0" aria-label="描边补偿说明">
+                ?
+                <span class="tip-pop" role="tooltip"><b>这是消除「边缘白边」的关键</b>：相邻色块各自抗锯齿会在拼接处留 0.5px 白缝，给每个形状加一条<b>与填充同色</b>的细描边即可盖住（Vector Magic 的「勾画 + 填充」策略）。<br>⚠️ 切割类流程（乙烯 / 激光 / 绣花）每个形状会被切两次，此类用途请关闭。</span>
+              </span>
+              <input type="checkbox" id="strokeComp" checked>
+            </div>
+          </div>
+          <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:14px">
+            <div class="row" style="margin:0">
               <label for="epsTransparent" style="cursor:pointer;font-weight:600;color:var(--text)">CMYK EPS 透明底</label>
               <span class="tip anchor-right" tabindex="0" aria-label="CMYK EPS 说明">
                 ?

@@ -229,6 +229,18 @@ console.log('\n=== 卡死防护（2026-11-07 审查）===');
     'runVectorize 有重入保护与挂起补跑');
 }
 
+console.log('\n=== 质量修复三件套（v8.5）===');
+{
+  for (const id of ['fillSnap', 'dropBg', 'strokeComp']) ok(html.includes('id="' + id + '"'), '#' + id + ' 存在');
+  ok(!/id="fillSnap" checked/.test(html), '近似色合并默认关闭（实测会破坏复合路径绕向）');
+  ok(/id="dropBg" checked/.test(html) && /id="strokeComp" checked/.test(html),
+    '剥离背景 / 同色描边补偿默认开启');
+  const en = fs.readFileSync(path.join(root, 'svg-enhance.js'), 'utf8');
+  ok(/export function snapFillColors/.test(en) && /export function dropBackgroundLayer/.test(en)
+    && /export function addStrokeCompensation/.test(en), 'svg-enhance.js 三个函数齐全');
+  ok(/stroke-linejoin', 'round'/.test(en), '描边补偿设置 round 连接');
+}
+
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));
 process.exit(fail ? 1 : 0);
 

@@ -5,6 +5,7 @@ import { toLegacySvg, restoreBackgroundColor, restoreProtectedColors } from './s
 import { removeSolidBackground, detectBackgroundColor, flattenOnto, opaqueRatio } from './matte.js';
 import { svgToCmykEps } from './eps-export.js';
 import { mergeSameColorPaths, restoreLostDetails, snapAdjacentBoundaries, unifyEqualRadiiInSvg } from './merge-paths.js';
+import { snapFillColors, dropBackgroundLayer, addStrokeCompensation } from './svg-enhance.js';
 import { preprocess, countColors } from './preprocess.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -1068,6 +1069,14 @@ async function runVectorize(force) {
     } else if (post1.enabled || post1.minArea > 0) {
       prog.stage(92, '矢量后处理');
       try {
+        /* v8.5 ①：先做近似色归并，否则 ±2~3 的色差会让「同色合并」漏掉大量色块 */
+        let snapInfo = null;
+        if (post1.fillSnap) {
+          try {
+            snapInfo = snapFillColors(svgText, { tol: 12 });
+            if (snapInfo.changed) svgText = snapInfo.svg;
+          } catch (e) { console.warn('近似色归并跳过', e); }
+        }
         const mr = await mergeSameColorPaths(svgText, {
           tolerance: post1.tolerance,
           minArea: post1.minArea,
@@ -1105,6 +1114,23 @@ async function runVectorize(force) {
       }
     } else {
       hideMergeStatus(1);
+    }
+
+    /* v8.5 ②：剥离白色背景层（近白 + 节点最多的一条），避免它在编辑器里盖住图形、
+       以及抗锯齿边压在色块上形成白晕。预览区本身有白底，观感不变。 */
+    if (post1.dropBg) {
+      try {
+        const bg = dropBackgroundLayer(svgText, { minChannel: 250, minNodes: 80 });
+        if (bg.dropped) svgText = bg.svg;
+      } catch (e) { console.warn('背景层剥离跳过', e); }
+    }
+    /* v8.5 ③：同色描边补偿（VM 的「勾画 + 填充」）——盖住相邻面之间 0.5px 的抗锯齿白缝。
+       切割类流程每个形状会被切两次，故做成可关闭选项。 */
+    if (post1.strokeComp) {
+      try {
+        const st = addStrokeCompensation(svgText, { width: 0.7 });
+        if (st.stroked) svgText = st.svg;
+      } catch (e) { console.warn('描边补偿跳过', e); }
     }
 
     prog.stage(96, '整理输出');
@@ -1575,6 +1601,7 @@ const POST_UI = {
     fragOn: '#fragOn', fragTol: '#fragTol', fragTolV: '#fragTolV', fragRow: '#fragRow',
     smooth: '#smoothEdge', smoothV: '#smoothEdgeV',
     refine: '#refineOn',
+    fillSnap: '#fillSnap', dropBg: '#dropBg', strokeComp: '#strokeComp',
     status: '#mergeStatus', sum: '#sumPost'
   },
   3: {
@@ -1598,7 +1625,12 @@ function collectPostOptions(i) {
     tolerance: parseInt($(ui.tol).value, 10) / 100,
     minArea: $(ui.fragOn).checked ? parseInt($(ui.fragTol).value, 10) : 0,
     edgeSmooth: parseInt($(ui.smooth).value, 10) || 0,
-    refine: ui.refine && $(ui.refine) ? $(ui.refine).checked : false
+    refine: ui.refine && $(ui.refine) ? $(ui.refine).checked : false,
+    /* v8.5：三项质量修复。⚠️ 近似色合并（fillSnap）实测会把 PSNR 从 33.22 打到 25.20，
+       原因是归并后的复合路径出现绕向/填充规则问题，大面积被挖空 → 暂时默认关闭，待修。 */
+    fillSnap: ui.fillSnap && $(ui.fillSnap) ? $(ui.fillSnap).checked : false,
+    dropBg: ui.dropBg && $(ui.dropBg) ? $(ui.dropBg).checked : true,
+    strokeComp: ui.strokeComp && $(ui.strokeComp) ? $(ui.strokeComp).checked : true
   };
 }
 
