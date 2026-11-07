@@ -3,7 +3,8 @@
 // 不是 Schneider 最小二乘拟合。用法:
 //   node refit.mjs <polygon.svg> <out.svg> [rdpEps] [cornerAngle] [precision]
 import fs from 'node:fs/promises';
-
+// 归档副本：导入路径已按本目录（docs/handover/2026-11-07/scripts）指向仓库根。
+import { fitClosedPath } from '../../../../bezierfit.js';
 const [inSvg, outSvg, epsStr = '0.35', angStr = '50', precStr = '2'] = process.argv.slice(2);
 const EPS = +epsStr, CORNER = +angStr, PREC = +precStr;
 

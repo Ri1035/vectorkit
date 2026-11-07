@@ -242,34 +242,12 @@ export function jagEnergy(data, w, h, opts = {}) {
  *   - 亮度 SSIM 会被"大面积颜色正确"主导 → 碎块/锯齿惩罚不足（这正是 PSNR 的问题）
  *   - 梯度 SSIM 直接看"结构边界是否还在" → 对"丢失明显"敏感
  *
- * 8×8 滑窗 + 11×11 高斯近似（σ=1.5 的 1D[1,6,15,20,15,6,1]/64 卷积，可分离）
+ * 7×7 滑窗（σ≈1.5 的 1D[1,6,15,20,15,6,1]/64 卷积，可分离）
+ * ⚠️ 均值与二阶矩必须**同窗**（见 ssimEdge 内注释），因此不再保留盒式模糊。
  * ------------------------------------------------------------------------ */
 
-function boxBlur(src, w, h, r) {
-  // 积分图 O(1) 滑窗均值
-  const ii = new Float64Array((w + 1) * (h + 1));
-  for (let y = 0; y < h; y++) {
-    let rowSum = 0;
-    for (let x = 0; x < w; x++) {
-      rowSum += src[y * w + x];
-      ii[(y + 1) * (w + 1) + (x + 1)] = ii[y * (w + 1) + (x + 1)] + rowSum;
-    }
-  }
-  const out = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
-    for (let x = 0; x < w; x++) {
-      const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
-      const s = ii[(y1 + 1) * (w + 1) + (x1 + 1)] - ii[y0 * (w + 1) + (x1 + 1)]
-              - ii[(y1 + 1) * (w + 1) + x0] + ii[y0 * (w + 1) + x0];
-      out[y * w + x] = s / ((x1 - x0 + 1) * (y1 - y0 + 1));
-    }
-  }
-  return out;
-}
-
 function gaussBlur(src, w, h) {
-  // 可分离 11 核高斯 σ=1.5
+  // 可分离 7 核高斯 σ≈1.5
   const k = [1, 6, 15, 20, 15, 6, 1], kr = 3, sum = 64;
   const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -315,24 +293,30 @@ export function ssimEdge(a, b, w, h, opts = {}) {
   };
   const rawA = gradOf(a), rawB = gradOf(b);
   const sA = Float32Array.from(rawA).sort();
-  const scale = sA[Math.min(sA.length - 1, Math.floor(sA.length * 0.99))] || 1;
+  /* 尺度下限：参考图几乎全平（99 分位 ≈ 0）时，除法会把噪声放大成"结构" */
+  const scale = Math.max(1e-6, sA[Math.min(sA.length - 1, Math.floor(sA.length * 0.99))] || 1);
   const ga = new Float32Array(w * h), gb = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) {
     ga[i] = Math.min(1, rawA[i] / scale);
-    gb[i] = Math.min(1, rawB[i] / scale);   // 不对称截断：过冲的高频正是"锯齿"，应保留
+    gb[i] = Math.min(1, rawB[i] / scale);   // 过冲的高频正是"锯齿"，截断到 1
   }
   const C1 = 0.01 * 0.01, C2 = 0.03 * 0.03;
+  /* ⚠️ 均值与二阶矩必须用**同一个窗**。
+     曾用「均值高斯 7×7 + 二阶矩盒式 11×11」，两个窗不一致会破坏柯西-施瓦茨，
+     使 cov > sqrt(va·vb)、va/vb 出现负数 → 局部 SSIM 可算出 195412 这类值
+     （实测 mandala B2 均值 1.97、9.5% 窗口越界）。同窗后 max 恒等于 1。 */
   const ma = gaussBlur(ga, w, h), mb = gaussBlur(gb, w, h);
   const saa = new Float32Array(w * h), sbb = new Float32Array(w * h), sab = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) { saa[i] = ga[i] * ga[i]; sbb[i] = gb[i] * gb[i]; sab[i] = ga[i] * gb[i]; }
-  const maa = boxBlur(saa, w, h, 5), mbb = boxBlur(sbb, w, h, 5), mab = boxBlur(sab, w, h, 5);
+  const maa = gaussBlur(saa, w, h), mbb = gaussBlur(sbb, w, h), mab = gaussBlur(sab, w, h);
 
   let total = 0, n = 0, minV = Infinity, maxV = -Infinity;
   for (let y = 6; y < h - 6; y++) {
     for (let x = 6; x < w - 6; x++) {
       const i = y * w + x;
-      const va = maa[i] - ma[i] * ma[i];
-      const vb = mbb[i] - mb[i] * mb[i];
+      /* 方差理论上非负；浮点误差可能产生极小负值 → 钳到 0 */
+      const va = Math.max(0, maa[i] - ma[i] * ma[i]);
+      const vb = Math.max(0, mbb[i] - mb[i] * mb[i]);
       const cov = mab[i] - ma[i] * mb[i];
       const s = ((2 * ma[i] * mb[i] + C1) * (2 * cov + C2)) /
                 ((ma[i] ** 2 + mb[i] ** 2 + C1) * (va + vb + C2));
@@ -345,7 +329,7 @@ export function ssimEdge(a, b, w, h, opts = {}) {
   // 局部 SSIM 理论范围 [-1,1]；近零方差窗口会算出远越界的值（如 -1300），
   // 那是公式退化而非真实信息 → 报告时钳制，原始分布无参考价值。
   const clamp1 = v => Math.max(-1, Math.min(1, v));
-  return { mean: +mean.toFixed(5), min: +clamp1(minV).toFixed(5), max: +clamp1(maxV).toFixed(5), windows: n };
+  return { mean: +clamp1(mean).toFixed(5), min: +clamp1(minV).toFixed(5), max: +clamp1(maxV).toFixed(5), windows: n };
 }
 
 /* ---------------------------------------------------------------------------

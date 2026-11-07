@@ -179,7 +179,13 @@ console.log('\n=== 观感指标方向验证（纪律：指标先验方向再用�
   if (r.status !== 0) ok(false, 'perceptual 方向验证脚本非零退出（stdout 见上）');
   /* perceptual.js 是测量模块，生产管线不引用 → 不得被打进线上包 */
   const build = fs.readFileSync(path.join(root, 'scripts/build.mjs'), 'utf8');
-  ok(/DEV_ONLY[\s\S]{0,120}perceptual\.js/.test(build), 'perceptual.js 已列入 DEV_ONLY（不进线上包）');
+  ok(/DEV_ONLY[\s\S]{0,160}perceptual\.js/.test(build), 'perceptual.js 已列入 DEV_ONLY（不进线上包）');
+  /* v7.7：ssimEdge 的均值与二阶矩必须同窗 —— 混窗会破坏柯西-施瓦茨，
+     方差算出负数，局部 SSIM 可到 195412（实测均值 1.97）。 */
+  const pj = fs.readFileSync(path.join(root, 'perceptual.js'), 'utf8');
+  ok(/const maa = gaussBlur\(saa/.test(pj) && !/boxBlur\(s[abc][ab]/.test(pj),
+    'ssimEdge 均值与二阶矩同窗（二阶矩不得用盒式模糊）');
+  ok(!/function boxBlur/.test(pj), 'perceptual.js 不再保留盒式模糊（避免被误用为异窗口）');
 }
 
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));

@@ -124,6 +124,28 @@ ok(ssimBroken.mean < 0.2,
 ok(ssimBlur.mean < ssimSame.mean,
   `模糊 ⇒ ssimEdge < 同图（${ssimBlur.mean} < ${ssimSame.mean}）`);
 
+/* ---------- 8. 不变量：ssimEdge.mean 必须落在 [-1,1] 且有限 ----------
+ * 曾因「均值用高斯窗、二阶矩用盒式窗」破坏柯西-施瓦茨，方差算出负数，
+ * 局部 SSIM 出现 195412 这类值（实测 mandala 均值 1.97、9.5% 窗口越界）。
+ * 这里用「强边 + 弱细线」构造同类的异质梯度场景守住不变量。 */
+{
+  const framed = (v) => makeImage((x, y) => {
+    if (x < 8 || y < 8 || x > W - 9 || y > H - 9) return [0, 0, 0];   // 强边：抬高 99 分位尺度
+    return (y % 24 === 0) ? [v, v, v] : [252, 252, 252];              // 弱细线：归一化后数值很小
+  });
+  const refF = framed(200);
+  const outF = makeImage((x, y) => {
+    if (x < 8 || y < 8 || x > W - 9 || y > H - 9) return [0, 0, 0];
+    return (y % 25 === 0) ? [210, 210, 210] : [250, 250, 250];
+  });
+  const r = ssimEdge(refF, outF, W, H);
+  const all = [ssimSame, ssimBroken, ssimBlur, r];
+  const bad = all.filter(v => !Number.isFinite(v.mean) || v.mean > 1 || v.mean < -1);
+  ok(bad.length === 0,
+    `ssimEdge 均值恒在 [-1,1]（${all.map(v => v.mean).join(', ')}）`);
+  ok(r.max <= 1 && r.min >= -1, `局部 SSIM 极值已钳制（min ${r.min} / max ${r.max}）`);
+}
+
 console.log('');
-console.log(fail ? `✗ 失败 ${fail} 项` : '✓ 7 项方向断言全部通过');
+console.log(fail ? `✗ 失败 ${fail} 项` : '✓ 9 项断言全部通过');
 process.exit(fail ? 1 : 0);
