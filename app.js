@@ -137,9 +137,22 @@ function canvasToBlob(canvas, format, quality) {
   });
 }
 
+/* 转换链路专用的加载：带超时，超时后清掉缓存槽，允许用户重试。
+   背景：loadEngine 本身不设超时，若同源请求被代理/弱网挂起，await 会永久等待，
+   按钮一直停在「转换中…」且不可点 —— 表现为卡死（2026-11-07 审查）。 */
+async function loadEngineWithTimeout(name, label) {
+  try {
+    return await withTimeout(loadEngine(name), label);
+  } catch (e) {
+    const slot = ENGINES[name];
+    if (slot) { slot.loading = null; slot.mod = null; }
+    throw e;
+  }
+}
+
 async function vectorize(opts) {
   if (opts.engine === 'imagetracer') {
-    const m = await loadEngine('imagetracer');
+    const m = await loadEngineWithTimeout('imagetracer', 'ImageTracer');
     const IT = m.default || m.ImageTracer;
     if (!IT || typeof IT.imagedataToSVG !== 'function') throw new Error('ImageTracer 加载失败');
     /* 注意：ImageTracer 是"调色板量化 + 逐色区描摹"，对全彩插画会产出**极多路径**（实测 bc 1024²
@@ -147,16 +160,16 @@ async function vectorize(opts) {
     return IT.imagedataToSVG({ width: opts.w, height: opts.h, data: new Uint8ClampedArray(opts.rgba) }, opts.options);
   }
   if (opts.engine === 'potrace') {
-    const m = await loadEngine('potrace');
+    const m = await loadEngineWithTimeout('potrace', 'Potrace');
     const imgData = new ImageData(new Uint8ClampedArray(opts.rgba), opts.w, opts.h);
     return await m.potrace(imgData, opts.options);
   }
-  const m = await loadEngine('vtracer');
+  const m = await loadEngineWithTimeout('vtracer', 'VTracer');
   return m.vectorize_rgba(opts.rgba, opts.w, opts.h, opts.options);
 }
 
 async function svgoOptimize(svg, config) {
-  const m = await loadEngine('svgo');
+  const m = await loadEngineWithTimeout('svgo', 'SVGO');
   const res = m.optimize(svg, config);
   return res && res.data ? res.data : svg;
 }
@@ -924,8 +937,16 @@ function showVectorResult(svgText, ms, key) {
   $('#copy1').disabled = false;
 }
 
+/* 并发保护：模板点击会在转换进行中再排一次 runVectorize（见 applyTemplate），
+   两次并发跑会让「后完成的」覆盖结果（可能是旧配置），且 busy() 的 innerHTML
+   还原顺序也会出错。这里改成「进行中则挂起一次，结束后补跑最新配置」（审查 2026-11-07）。 */
+let vectorRunActive = false;
+let vectorRunPending = false;
+
 async function runVectorize(force) {
   if (!S1.imageData) return;
+  if (vectorRunActive) { vectorRunPending = true; return; }
+  vectorRunActive = true;
   const btn = $('#run1');
   const prog = PROG[1];
   const restore = busy(btn, '转换中…');
@@ -1127,6 +1148,12 @@ async function runVectorize(force) {
     alert('转换失败：' + (err && err.message ? err.message : err));
   } finally {
     restore();
+    vectorRunActive = false;
+    if (vectorRunPending) {
+      vectorRunPending = false;
+      /* 补跑期间用户可能已换图/清空 → runVectorize 内部会自行判断 */
+      setTimeout(() => { runVectorize(false); }, 0);
+    }
   }
 }
 

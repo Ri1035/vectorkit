@@ -4,6 +4,51 @@
 > （例：第 10 版 = `v1.0`，第 20 版 = `v2.0`，第 43 版 = `v4.3`）；**不出现三段式版本号**。
 > 2026-10-08 已按此规则对全部历史条目统一重编号。
 
+## [7.9] - 2026-11-07
+
+### 阶段 0：卡死审查 + 3 项「会表现为卡死」的修复
+
+用户要求先做 bug 审查、检查有没有卡死。静态审查全部 `while`/递归/await 点 + Edge headless 实测
+（CDP Profiler 热点归因）。
+
+**结论：无死循环、无永久卡死**；3 个隐患已修，2 项保留并登记。
+
+#### 修复
+
+| # | 问题 | 修法 |
+|---|---|---|
+| R1 | `vectorize()` / `svgoOptimize()` 调 `loadEngine()` **无超时** —— 弱网或代理让同源请求挂起时，`await` 永久等待，按钮停在「转换中…」且不可点 | 新增 `loadEngineWithTimeout()`（20 s），超时后**清空该引擎缓存槽**，下一次点击可重新加载 |
+| R2 | `loadPaper()` 的 `<script>` 既不 `onload` 也不 `onerror` 时永久 await，转换停在「加载几何引擎」 | 15 s 超时 → 移除 script + 清空 `paperPromise` + reject；调用侧已有「跳过同色合并」降级分支 |
+| R3 | 转换进行中点模板会再排一次 `runVectorize`，两次并发跑、**后完成者覆盖结果**（可能是旧配置） | 加 `vectorRunActive` / `vectorRunPending`：进行中只挂起，结束后用最新配置补跑一次 |
+
+#### 实测数据（本机 Edge headless）
+
+| 图 | 总耗时 | 最长连续阻塞 | 热点 |
+|---|---|---|---|
+| mandala 366×375（自动 ×2） | 1515 ms | **1202–1300 ms** | VTracer WASM 792 ms、`medianFilter` 144 ms、`getImageData` 68 ms |
+| bc-test 1280×1280 | 759 ms | 无 >200 ms 独立长任务 | `medianFilter` 239 ms、VTracer WASM 217 ms |
+
+- 冷启动 169 ms → 引擎就绪 227 ms
+- 关掉「同色合并」重测：1234 → 1313 ms（**几乎无变化**）→ 长阻塞在引擎，不在后处理
+- 转換中连点 4 个模板：按钮最终恢复、无 spinner、零 console error
+
+#### 保留项
+
+- **R4 主线程长阻塞**：VTracer 的 WASM 调用是同步的，无法在 Promise 层切分。Worker 方案风险大
+  （v0.2 已实测 module worker 内 import 永远挂起），先用文档记录现状（最长约 1.3 s / 密集线条图）
+- **R5 错误用 `alert()`**：会阻塞页面，建议改内联错误条（UX 变更，另立项）
+
+#### 回归守护
+
+`npm test` 新增「卡死防护」5 项源码级断言：`vectorize`/`svgoOptimize` 必须走带超时加载、
+`loadEngineWithTimeout` 必须存在、`loadPaper` 必须带超时、`runVectorize` 必须有重入保护。
+
+#### 文档
+
+新增 [`docs/handover/2026-11-07/07_卡死与长任务审查.md`](docs/handover/2026-11-07/07_卡死与长任务审查.md)：
+静态审查表、实测数据、修复细节、保留项与复跑方法（含 Windows 下 Playwright ESM 路径踩坑）。
+同步 `PLAN_HANDOVER_2026-11-07.md` 阶段 0 与进度表。
+
 ## [7.8] - 2026-11-07
 
 ### 阶段 2b：描摹分辨率 ×2/×3/×4 复测完成（**无产品代码变更**）

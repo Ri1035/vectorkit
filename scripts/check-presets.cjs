@@ -188,5 +188,25 @@ console.log('\n=== 观感指标方向验证（纪律：指标先验方向再用�
   ok(!/function boxBlur/.test(pj), 'perceptual.js 不再保留盒式模糊（避免被误用为异窗口）');
 }
 
+console.log('\n=== 卡死防护（2026-11-07 审查）===');
+{
+  /* ① 引擎加载必须有超时：loadEngine 自身不设超时，弱网/代理挂起时会永久 await */
+  const vec = (src.match(/async function vectorize\(opts\)[\s\S]*?\n\}/) || [''])[0];
+  const svg = (src.match(/async function svgoOptimize\(svg, config\)[\s\S]*?\n\}/) || [''])[0];
+  ok(/loadEngineWithTimeout/.test(vec) && !/[^h]await loadEngine\(/.test(vec),
+    'vectorize 走带超时的加载（超出即报错并可重试）');
+  ok(/loadEngineWithTimeout/.test(svg), 'svgoOptimize 走带超时的加载');
+  ok(/async function loadEngineWithTimeout/.test(src), 'loadEngineWithTimeout 存在（超时后清缓存槽）');
+
+  /* ② Paper.js 的 script 标签加载必须有超时 */
+  const mp = fs.readFileSync(path.join(root, 'merge-paths.js'), 'utf8');
+  ok(/PAPER_LOAD_TIMEOUT/.test(mp) && /setTimeout\(\(\) => fail\(/.test(mp),
+    'loadPaper 带超时并在超时后清空缓存');
+
+  /* ③ 转换不可并发重入（模板点击会在转换中再排一次） */
+  ok(/vectorRunActive/.test(src) && /vectorRunPending/.test(src),
+    'runVectorize 有重入保护与挂起补跑');
+}
+
 console.log('\n' + (fail ? `✗ 失败 ${fail} 项` : '✓ 全部通过'));
 process.exit(fail ? 1 : 0);

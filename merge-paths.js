@@ -426,18 +426,37 @@ function dpKeep(points, tol) {
 
 let paperPromise = null;
 
+/* 加载 Paper.js。⚠️ 必须带超时：script 标签若既不触发 onload 也不触发 onerror
+   （代理拦截 / 请求挂起），await 会永久等待 → 转换停在「加载几何引擎」不可恢复。
+   超时后移除 script 并清空缓存，允许下次重试（2026-11-07 卡死审查）。 */
+const PAPER_LOAD_TIMEOUT = 15000;
+
 async function loadPaper() {
   if (window.paper) return window.paper;
   if (paperPromise) return paperPromise;
   paperPromise = new Promise((resolve, reject) => {
     const s = document.createElement('script');
+    let settled = false;
+    let timer = null;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      s.remove();
+      paperPromise = null;
+      reject(err);
+    };
+    timer = setTimeout(() => fail(new Error('Paper.js 加载超时（' + (PAPER_LOAD_TIMEOUT / 1000) + 's）')), PAPER_LOAD_TIMEOUT);
     s.src = new URL('vendor/paper-full.min.js', import.meta.url).href;
     s.onload = () => {
-      if (!window.paper) { reject(new Error('Paper.js 未挂载到全局')); return; }
+      if (settled) return;
+      if (!window.paper) { fail(new Error('Paper.js 未挂载到全局')); return; }
+      settled = true;
+      clearTimeout(timer);
       try { window.paper.setup(document.createElement('canvas')); } catch (e) { /* 已有项目上下文 */ }
       resolve(window.paper);
     };
-    s.onerror = () => { paperPromise = null; reject(new Error('Paper.js 加载失败')); };
+    s.onerror = () => fail(new Error('Paper.js 加载失败'));
     document.head.appendChild(s);
   });
   return paperPromise;
