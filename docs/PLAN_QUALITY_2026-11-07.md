@@ -152,3 +152,10 @@ Phase 1 的 1-A / 1-B / 1-D 已落地；1-C 未做。修复了 7 个管线冲突
 
 顺带修复的既有 bug：小图 ×2 上采样只输出左上角 1/4（`ensureSvgSize` 的 viewBox 与显示尺寸混用），
 修复后 winter / sunflower / mandala 分别从 10.62 / 9.67 / 8.41 dB 提升到 30.08 / 24.83 / 19.28 dB。
+
+### v8.7 追加（VM EPS 对照）
+
+用用户提供的两份 VM EPS 做了结构对照，确认剩余差距的主因是**浅色带被层差阈值吞掉**。
+`colorPrecision 6→8`、`layerDifference 32→16` 后：bc 33.04→33.31（白缝 7404→2212），
+winter 30.03→33.47，sunflower 24.96→25.62，mandala 16.62→16.95。
+VM 的几何优势（节点数为我们的 1/5、edgeCorr 0.861 vs 0.757）仍需 Phase 3 解决。

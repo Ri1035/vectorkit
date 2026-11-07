@@ -58,17 +58,20 @@ ok(collect('vtracer', 'detail').simplify === undefined, 'detail 不下发 simpli
 ok(collect('vtracer', 'detail').hierarchical === 'cutout', 'detail 使用 cutout');
 /* v7.1 参数寻优实测（用户追问"模版和参数都是最优了吗？"后做的全档位 + 单变量 + 组合扫描）：
    去噪 8→10 / 层差 16→32 / 路径精度 2→1，三项可叠加 → PSNR 36.53→37.05、体积 78.6→39.6KB。
-   验收条件含**逐区域 MSE 不得上升**（防"PSNR 涨了但细节被丢"）——实测眼睛高光区 64.5→59.4。 */
+   验收条件含**逐区域 MSE 不得上升**（防"PSNR 涨了但细节被丢"）——实测眼睛高光区 64.5→59.4。
+   v8.7 重新在四图（bc/winter/sunflower/mandala）上复测颜色精度与层差：
+   6/32 → 8/16 分别 +0.27 / +3.44 / +0.66 / +0.33 dB，旧的 6/32 结论不再适用于当前管线。 */
 ok(collect('vtracer', 'logo').filterSpeckle === 8, 'logo 使用去噪 8（v8.2：用户实测"丢失"后从 10 回调）');
-ok(collect('vtracer', 'logo').layerDifference === 32, 'logo 使用层差 32（v7.1 实测最优，+0.38dB，最优区间 28~32）');
+ok(collect('vtracer', 'logo').layerDifference === 16, 'logo 使用层差 16（v8.7 四图复测：浅色带不再被吞）');
 ok(collect('vtracer', 'logo').pathPrecision === 1, 'logo 使用路径精度 1（PSNR 持平、体积 -15%）');
 /* 扫描证明确为最优、必须保持不变的项（回退即等于放弃实测结论） */
 ok(collect('vtracer', 'logo').cornerThreshold === 60, 'logo 拐角 60 实测最优（30~110 全在 ±0.25dB 内，60 为峰）');
-ok(collect('vtracer', 'logo').colorPrecision === 6, 'logo 颜色精度 6 实测最优（4 灾难性 22.55dB / 8 降至 35.24）');
+ok(collect('vtracer', 'logo').colorPrecision === 8, 'logo 颜色精度 8（v8.7 四图复测：6 会丢浅色带）');
 ok(collect('vtracer', 'logo').lengthThreshold === 4, 'logo 细节保留 4（实测 8 反而变差，保持 4）');
 ok(collect('vtracer', 'vmde').pathPrecision === 1, 'vmde 路径精度 1（与 logo 同族，无条件更优）');
 ok(SCHEMA.vtracer.find(d => d.key === 'filterSpeckle').def === 8, '面板「去噪」兜底默认 = 8（与 logo 档对齐）');
-ok(SCHEMA.vtracer.find(d => d.key === 'layerDifference').def === 32, '面板「层间差异」兜底默认 = 32（与 logo 档对齐实测最优）');
+ok(SCHEMA.vtracer.find(d => d.key === 'layerDifference').def === 16, '面板「层间差异」兜底默认 = 16（与 logo 档对齐）');
+ok(ADV.vtracer.find(d => d.key === 'colorPrecision').def === 8, 'ADV 颜色精度兜底默认 = 8（与 logo 档对齐）');
 ok(ADV.vtracer.find(d => d.key === 'pathPrecision').def === 1, 'ADV 路径精度兜底默认 = 1');
 ok(collect('vtracer', 'logo').hierarchical === 'cutout', 'logo 使用 cutout（实测优于 stacked）');
 ok(collect('vtracer', 'logo').simplify === 1, 'logo 使用 simplify 1（体积不设约束后仍保留：+0.58dB 需体积 ×2.9，取舍见 CHANGELOG 7.1）');
@@ -112,14 +115,14 @@ console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
 
     /* 实测数值：钉死每个模板实际生效的参数（引用预设的模板同样要等于该值） */
     const EXPECT_TPL = {
-      daily:    { filterSpeckle: 8,  layerDifference: 32 },
-      artwork:  { filterSpeckle: 6,  layerDifference: 32 },
-      smooth:   { filterSpeckle: 8,  layerDifference: 32 },
+      daily:    { filterSpeckle: 8,  layerDifference: 16 },
+      artwork:  { filterSpeckle: 6,  layerDifference: 16 },
+      smooth:   { filterSpeckle: 8,  layerDifference: 16 },
       faithful: { filterSpeckle: 4,  layerDifference: 16 },
-      photo:    { filterSpeckle: 8,  layerDifference: 32 },
+      photo:    { filterSpeckle: 8,  layerDifference: 16 },
       lean:     { filterSpeckle: 14, layerDifference: 16 },
       tiny:     { filterSpeckle: 16, layerDifference: 20 },
-      editable: { filterSpeckle: 8,  layerDifference: 32 },
+      editable: { filterSpeckle: 8,  layerDifference: 16 },
       line:     { filterSpeckle: 2,  layerDifference: 16 },
     };
     for (const id of Object.keys(EXPECT_TPL)) {

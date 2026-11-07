@@ -713,15 +713,18 @@ const PRESETS = {
        去噪 10 = PSNR 32.63 / 白缺失 9551 px；去噪 8 = 33.23 / 8805 px；
        去噪 6 = 34.01 / 7914。10 是"丢细节最多"的一档，用户实测抱怨"丢失"。
        取 8：+0.60 dB、白缺失 −8%，对象数只从 67 增到 95（不像 6 那样翻倍）。 */
-    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡（v8.2 修正为去噪 8）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, simplify: 1, colorPrecision: 6, layerDifference: 32, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
-    detail: { name: '高细节', desc: '保留眼睛高光/鼻孔等细部（v6.8 实测）· 边缘略锯、体积较大', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 4, simplify: 0, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
+    /* v8.7：颜色精度 6→8、层差 32→16。依据 VM EPS 对照实测（bc / winter / sunflower / mandala 四图）：
+       6/32 → 8/16 分别 +0.27 / +3.44 / +0.66 / +0.33 dB，白缝与观感代理不回归。
+       旧值 6/32 是 v7.1 在旧管线上测得；当前管线（近似色合并 + 描边补偿）下会丢掉浅色带。 */
+    logo:   { name: 'Logo 图标', desc: '默认档 · 细节与体积平衡（v8.2 修正为去噪 8）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 8, simplify: 1, colorPrecision: 8, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
+    detail: { name: '高细节', desc: '保留眼睛高光/鼻孔等细部（v6.8 实测）· 边缘略锯、体积较大', opts: { clustering: 'color-cluster', hierarchical: 'cutout', filterSpeckle: 4, simplify: 0, colorPrecision: 8, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    photo:  { name: '照片', desc: '连续色调，保留细节', opts: { preset: 'photo', hierarchical: 'cutout', filterSpeckle: 4, simplify: 1, colorPrecision: 8, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 1 } },
     line:   { name: '线稿 / 签名', desc: '黑白线条与轮廓', opts: { clustering: 'bw', adaptive: true, hierarchical: 'stacked', filterSpeckle: 2, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
-    poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
+    poster: { name: '海报扁平', desc: '自动减色，体积更小', opts: { preset: 'poster', maxColors: 12, hierarchical: 'stacked', simplify: 1.5, optimize: 2, filterSpeckle: 4, colorPrecision: 8, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, mode: 'spline', pathPrecision: 2 } },
     pixel:  { name: '像素画', desc: '保留硬边方格', opts: { clustering: 'color-cluster', hierarchical: 'stacked', mode: 'pixel', filterSpeckle: 0, colorPrecision: 8, maxIterations: 0, pathPrecision: 0 } },
     /* vmde 档的 pathPrecision 同步降为 1：与 logo 同族，路径精度只影响坐标小数位数，
        PSNR 实测完全持平（锚点数逐位相同）、体积更小 → 无条件更优 */
-    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, simplify: 1, colorPrecision: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 1 } }
+    vmde:   { name: 'vmde 最高保真', desc: '细节最多 · 体积最大（实测最保真）', opts: { clustering: 'color-cluster', hierarchical: 'cutout', mode: 'spline', filterSpeckle: 6, simplify: 1, colorPrecision: 8, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, maxIterations: 10, pathPrecision: 1 } }
   },
   potrace: {
     sharp:  { name: '锐利线条', desc: '拐角保留，几何图形', opts: { turdsize: 2, alphamax: 0, opticurve: 1, opttolerance: 0.2, extractcolors: 0, turnpolicy: 4 } },
@@ -734,7 +737,7 @@ const PRESETS = {
 const SCHEMA = {
   vtracer: [
     { key: 'filterSpeckle', label: '去噪（越小越保细节）', min: 0, max: 32, step: 1, def: 8 },
-    { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 32 },
+    { key: 'layerDifference', label: '层间差异阈值（越大色层越少）', min: 0, max: 64, step: 1, def: 16 },
     { key: 'maxColors', label: '最大色数（0 为不限）', min: 0, max: 64, step: 1, def: 0 },
     { key: 'cornerThreshold', label: '拐角阈值', min: 0, max: 180, step: 1, def: 60 },
     { key: 'lengthThreshold', label: '细节保留度', min: 0, max: 20, step: 1, def: 4 }
@@ -759,7 +762,7 @@ const ADV = {
     { key: 'clustering', label: '分区算法', type: 'select', options: [['color-cluster', '色彩聚类（通用）'], ['bw', '黑白二值'], ['watershed', '分水岭']] },
     { key: 'hierarchical', label: '层级模式', type: 'select', options: [['stacked', '堆叠（上层覆盖下层）'], ['cutout', '无缝共用边界（马赛克）']] },
     { key: 'mode', label: '曲线模式', type: 'select', options: [['spline', '平滑样条'], ['polygon', '多边形'], ['pixel', '像素不简化']] },
-    { key: 'colorPrecision', label: '颜色精度', type: 'range', min: 1, max: 8, step: 1, def: 6 },
+    { key: 'colorPrecision', label: '颜色精度', type: 'range', min: 1, max: 8, step: 1, def: 8 },
     { key: 'pathPrecision', label: '路径精度', type: 'range', min: 0, max: 8, step: 1, def: 1 },
     { key: 'simplify', label: '曲线简化容差（0 关闭；vmde 档为 1）', type: 'range', min: 0, max: 5, step: 0.5, def: 0 },
     { key: 'watershedDetail', label: '分水岭细节（仅分区=分水岭时生效）', type: 'range', min: 16, max: 512, step: 16, def: 128 },
