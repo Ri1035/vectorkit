@@ -109,7 +109,8 @@
 | 计划 | 状态 | 取代关系 | 下一步 |
 |---|---|---|---|
 | `PLAN_HIGH_FIDELITY.md`（主线） | 进行中（参数寻优已收口） | — | v7.1/v7.2 已完成全档位与模板参数寻优；下一步待用户指定新目标 |
-| `PLAN_HANDOVER_2026-11-07.md`（交接实验落地） | 阶段 1、2 完成；阶段 3 不批准（关闭） | — | 剩余待办：`ssimEdge` 退化值修复、共享边对应表（仅当重启 polygon 精度档） |
+| `PLAN_HANDOVER_2026-11-07.md`（交接实验落地） | 阶段 1、2 完成；阶段 3 不批准（关闭） | — | 剩余待办：`ssimEdge` 退化值修复（已修 v7.7）、共享边对应表（仅当重启 polygon 精度档） |
+| `PLAN_QUALITY_2026-11-07.md`（质量回归改进） | **新建，待启动 Phase 1** | — | 近似色合并 / 背景层分离 / 过渡带归属 / 对比度碎块清理 |
 | `PLAN_PARALLEL_ENGINE.md`（并列引擎） | **P0/P1/去碎片化已完成**，未接入生产 | 取代 C 方案 | **P2' 保真度优先的容差寻优** |
 | `PLAN_JOINT_OPTIMIZATION.md`（C 方案） | **已废弃** | 被 `PLAN_PARALLEL_ENGINE` 取代 | 仅历史留存 |
 | `OPTIMIZATION_EDGE_SEPARATION.md` | 已完成并并入 CHANGELOG | — | 无 |
