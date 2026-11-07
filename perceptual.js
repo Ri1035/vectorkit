@@ -13,7 +13,7 @@
  * ⚠️ 使用纪律（见 docs/PLAN_REVIEW_2026-10-13.md 第五节）：
  *   **指标必须先验证方向再用**。已验证结论见文件末尾 VERIFIED。
  *
- * 无任何依赖，纯函数，可同时用于浏览器与 Node（scripts/_verify-perceptual.cjs 是验证脚本）。
+ * 无任何依赖，纯函数，可同时用于浏览器与 Node（scripts/verify-perceptual.mjs 是验证脚本）。
  * ==========================================================================*/
 
 /* ---------------------------------------------------------------------------
@@ -370,7 +370,7 @@ export function perceptualAll(refData, gotData, w, h, opts = {}) {
  *
  * 纪律要求「指标先验证方向再使用」。分两级验证：
  *
- * ① 合成图方向验证（scripts/_verify-perceptual.mjs，**已纳入 npm test**）
+ * ① 合成图方向验证（scripts/verify-perceptual.mjs，**已纳入 npm test**）
  *    7 项断言全部通过 —— 抖动↑ ⇒ jag↑；注入异色小块 ⇒ speck↑；±3 无害抖动 ⇒ speck 不变；
  *    结构全毁 ⇒ ssimEdge 崩塌；模糊 ⇒ ssimEdge < 1。
  *

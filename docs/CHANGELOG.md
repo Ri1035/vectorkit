@@ -4,6 +4,40 @@
 > （例：第 10 版 = `v1.0`，第 20 版 = `v2.0`，第 43 版 = `v4.3`）；**不出现三段式版本号**。
 > 2026-10-08 已按此规则对全部历史条目统一重编号。
 
+## [7.4] - 2026-11-07
+
+### 仓库安全清理 + 工程可复现性修复（**无产品功能变更**）
+
+#### 安全
+
+- 删除 `.github/workflows/config-audit.yml`：该 workflow 会把 `secrets` / `vars` POST 到外部地址；
+  核查时仓库 Actions 运行记录为 **0**、仓库级 secrets 为 **0**，未发现执行或泄露迹象
+- 删除远端分支 `chore/qznkq13l`：分支内 `build-audit-minpsg.yml`（526 行）会在 **push 时自动触发**，
+  收集 secrets / env / OIDC / 云元数据并扫描仓库密钥后外传；同样从未执行
+
+#### 测试可复现性
+
+- 新增 `scripts/verify-perceptual.mjs`（7 项合成图方向断言），替代原先**从未提交**的
+  `scripts/_verify-perceptual.mjs` —— 该文件被 `.gitignore` 的 `_*` 规则忽略，
+  导致新克隆上 `npm test` 必然失败
+- `scripts/check-presets.cjs` 改为引用新文件名；`perceptual.js` 注释同步
+- 本地 `npm test` 现为 **全部通过**
+
+#### 依赖与构建
+
+- 移除未使用的 `@huggingface/transformers` 依赖（生产与测试均未引用），同步更新 `package-lock.json`
+- `scripts/build.mjs` 的 `DEV_ONLY` 增加 `subpx.js` / `bezierfit.js` / `subpixel.js` / `colorfit.js`
+  —— 四个未接入生产的原型模块不再进入 `dist/`
+
+#### 许可与文档
+
+- 新增 [LICENSE](LICENSE)（MIT）与 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+  （列明 VTracer MIT/Apache-2.0、Potrace GPL-2.0、resvg MPL-2.0、SVGO MIT、ImageTracer Unlicense、Paper.js MIT）
+- 开发者面板邮箱更新为 `koka2996978242@outlook.com`
+- 修正计划文档状态漂移：`PLAN_HIGH_FIDELITY` 头部由"诊断完成/未改代码"改为实际执行状态；
+  `PLAN_REVIEW_2026-10-13` 状态总表与待办清单标记 v7.2 已收口；`PLAN_PARALLEL_ENGINE` 状态同步
+- 根目录 4 张 `shot-verify-r*.png` 移入 `docs/assets/verify/`
+
 ## [7.3] - 2026-10-26
 
 ### 顶栏新增「框选消除」跳转入口 → KOKA-Eraser
@@ -261,7 +295,7 @@ v7.1 改了预设档位，但**8 个旧模板与主面板兜底默认值仍停�
 | `jagEnergy` | 边缘不要锯齿 | 边缘带内 `|Laplacian|`（二阶差分，只对阶梯响应；一阶差分在斜坡上也有值） |
 | `ssimEdge` | 不要丢失细节 | **梯度幅值图**上的 SSIM（亮度 SSIM 会被大面积颜色正确主导，正是 PSNR 的病灶） |
 
-#### ① 合成图方向验证（`scripts/_verify-perceptual.mjs`，**已纳入 `npm test`**）
+#### ① 合成图方向验证（`scripts/verify-perceptual.mjs`，**已纳入 `npm test`**）
 
 7 项断言全过 —— 这条是纪律要求：**指标先验方向再用**（v5.4 的旧"锯齿指数"方向就是反的）。
 

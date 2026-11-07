@@ -172,7 +172,7 @@ ok(!html.includes('id="preUpsample"'), '旧「小图自动上采样」复选框�
 console.log('\n=== 观感指标方向验证（纪律：指标先验方向再用）===');
 { /* perceptual.js 的三个指标必须保持方向正确；一旦被改坏，立即拦下 */
   const r = require('child_process').spawnSync(process.execPath,
-    [path.join(root, 'scripts/_verify-perceptual.mjs')], { encoding: 'utf8' });
+    [path.join(root, 'scripts/verify-perceptual.mjs')], { encoding: 'utf8' });
   const out = (r.stdout || '') + (r.stderr || '');
   const lines = out.split('\n').filter(l => l.includes('✓') || l.includes('✗'));
   for (const l of lines) ok(l.includes('✓'), l.replace(/^\s*[✓✗]\s*/, ''));

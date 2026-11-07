@@ -108,7 +108,7 @@
 
 | 计划 | 状态 | 取代关系 | 下一步 |
 |---|---|---|---|
-| `PLAN_HIGH_FIDELITY.md`（主线） | 进行中 | — | 按 v6.5 之后的 P2' 执行 |
+| `PLAN_HIGH_FIDELITY.md`（主线） | 进行中（参数寻优已收口） | — | v7.1/v7.2 已完成全档位与模板参数寻优；下一步待用户指定新目标 |
 | `PLAN_PARALLEL_ENGINE.md`（并列引擎） | **P0/P1/去碎片化已完成**，未接入生产 | 取代 C 方案 | **P2' 保真度优先的容差寻优** |
 | `PLAN_JOINT_OPTIMIZATION.md`（C 方案） | **已废弃** | 被 `PLAN_PARALLEL_ENGINE` 取代 | 仅历史留存 |
 | `OPTIMIZATION_EDGE_SEPARATION.md` | 已完成并并入 CHANGELOG | — | 无 |
@@ -119,7 +119,7 @@
 | # | 事项 | 归属 | 为什么排这个位置 |
 | --- | --- | --- | --- |
 | **1** | ~~**补 3 个观感指标**~~ ✅ **v6.8 完成** | — | 已落地：`perceptual.js`，7 项方向断言进 `npm test`；真实图实测发现 **simplify 会掉结构** |
-| **2** | **主线参数按观感指标重寻优** ← **当前进行中** | `PLAN_HIGH_FIDELITY` | v6.8 已定位新线索：**simplify 掉结构**（ssimEdge 0.449→0.401），需重扫 `simplify` × `去噪` |
+| **2** | ~~**主线参数按观感指标重寻优**~~ ✅ **v7.2 完成** | — | v7.1 完成全档位 + 单变量 + 组合寻优；v7.2 把 8 个模板与面板兜底默认同步对齐（实测结论见 CHANGELOG [7.1][7.2]） |
 | 3 | **并列引擎 P2' 容差寻优**（只往严调） | `PLAN_PARALLEL_ENGINE` | 唯一还可能缩小 2.83 dB 的地方；但**未接入生产**，须先用指标验证 |
 | 4 | **两套配置系统合并**（新 `PRESETS` ↔ 旧 `TEMPLATES`） | `PLAN_HIGH_FIDELITY` | 属工程整洁性，**与画质无关**，故排最后 |
 | 5 | 轮廓放在**两色等量处**的覆盖率场平滑（VectorCraft Flat-Logo 模式） | `PLAN_PARALLEL_ENGINE` | 仅在 3 之后仍有差距时才启动 |
