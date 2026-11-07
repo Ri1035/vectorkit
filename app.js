@@ -1234,61 +1234,84 @@ $('#engineSeg').addEventListener('click', e => {
    ② **post.edge 在 cutout 下是死配置** —— cutout 已被 app.js 强制跳过几何后处理
       （实测 cutout 开边缘平滑 = MSE ×46），故 cutout 模板不再写 edge；
       唯一 stacked 模板（line）保留。同时 applyTemplate 对未写出的 edge 显式置 0，杜绝残留。 */
+/* ---- 模板与预设同源（v8.0 配置系统合并）----
+ * 问题是"同一份实测最优值存在三处入口"：预设 PRESETS、模板 TEMPLATES、面板兜底 SCHEMA/ADV。
+ * v7.1/v7.2 曾靠手工对齐，一旦再改预设，模板就会悄悄落后。
+ * 这里让**与 logo 档同值**的模板直接引用日志源头，不再复制数字；
+ * 有意不同的模板（lean/tiny/faithful/artwork 的部分项）保留字面量，并写清理由。 */
+function presetParams(id) {
+  const o = PRESETS.vtracer[id].opts;
+  return {
+    filterSpeckle: o.filterSpeckle,
+    layerDifference: o.layerDifference,
+    maxColors: 0,
+    cornerThreshold: o.cornerThreshold,
+    lengthThreshold: o.lengthThreshold
+  };
+}
+function presetAdv(id) {
+  const o = PRESETS.vtracer[id].opts;
+  return { clustering: o.clustering, hierarchical: o.hierarchical };
+}
+
 const TEMPLATES = [
   {
     id: 'daily', name: '我的常用', desc: '常规吊牌 · 保留细节',
-    params: { filterSpeckle: 10, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    params: presetParams('logo'),
+    adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
     post: { merge: true, tol: 50, frag: true, fragTol: 6 }
   },
   {
     id: 'lean', name: '节点精简', desc: 'EPS 线条更顺 · 节点减约 2/3',
+    /* 有意与 logo 不同：更激进去噪 + 更大的锚点容差，用于压对象数（v7.2 实测层差 32 在此档无收益） */
     params: { filterSpeckle: 14, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 8 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
     post: { merge: true, tol: 200, frag: true, fragTol: 6 }
   },
   {
     id: 'artwork', name: '插画精细', desc: '自研 · 圆形物体完美还原 + 细节保留',
-    params: { filterSpeckle: 6, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    /* 只有去噪取 6（比 logo 更保细节），其余沿用 logo 实测值 */
+    params: { ...presetParams('logo'), filterSpeckle: 6 },
+    adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
     post: { merge: true, tol: 150, frag: true, fragTol: 6 }
   },
   {
     id: 'smooth', name: '平滑增强', desc: '细节保留 · 边缘最平滑（含上采样）',
-    params: { filterSpeckle: 10, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    params: presetParams('logo'),
+    adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0, upsample: true },
     post: { merge: true, tol: 200, frag: true, fragTol: 6 }
   },
   {
     id: 'tiny', name: '极小文件', desc: 'CDR 打开最快 · 接受少量简化',
+    /* 有意与 logo 不同：高去噪 + 高容差 + 48 色量化（v7.2 实测层差 32 零收益，保持 20） */
     params: { filterSpeckle: 16, layerDifference: 20, maxColors: 0, cornerThreshold: 60, lengthThreshold: 16 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    adv: presetAdv('logo'),
     pre: { size: 1200, denoise: true, smooth: 1, colors: 48 },
     post: { merge: true, tol: 200, frag: true, fragTol: 10 }
   },
   {
     id: 'faithful', name: '高保真', desc: '细节优先 · 形状还原',
+    /* 有意与 logo 不同：低去噪 + 宽拐角 + 最细节（层差 24 为实测最优点） */
     params: { filterSpeckle: 4, layerDifference: 24, maxColors: 0, cornerThreshold: 70, lengthThreshold: 2 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    adv: presetAdv('logo'),
     pre: { size: 2400, denoise: false, smooth: 0, colors: 0 },
     post: { merge: false, tol: 30, frag: false, fragTol: 4 }
   },
   {
     id: 'photo', name: '多色照片', desc: '商品照片 · 减少色块',
-    params: { filterSpeckle: 10, layerDifference: 32, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    adv: { clustering: 'color-cluster', hierarchical: 'cutout' },
+    params: presetParams('logo'),
+    adv: presetAdv('logo'),
     pre: { size: 1600, denoise: true, smooth: 1, colors: 48 },
     post: { merge: true, tol: 100, frag: true, fragTol: 8 }
   },
   {
     id: 'line', name: '线稿印章', desc: '黑白线条 · 中心线平滑',
+    /* 有意与 logo 不同：黑白二值分区 + stacked（无相邻色块共享边界问题），故唯一保留 edge */
     params: { filterSpeckle: 2, layerDifference: 16, maxColors: 0, cornerThreshold: 60, lengthThreshold: 4 },
-    /* bw 分区用 stacked（非 cutout）：黑白二值没有相邻色块的共享边界问题，
-       此时几何类后处理可用，故本模板是唯一保留 edge 的模板 */
     adv: { clustering: 'bw', hierarchical: 'stacked' },
     pre: { size: 1600, denoise: true, smooth: 0, colors: 0 },
     post: { merge: false, tol: 50, frag: true, fragTol: 4, edge: 1 }

@@ -82,40 +82,35 @@ ok(collect('vtracer', 'poster').simplify === 1.5, 'poster 保持 simplify = 1.5�
 
 console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
 {
-  /* 直接在源码上按"每个模板块"切分并检字段 —— 不做 JSON.parse（源码含注释与单引号，反序列化不可靠） */
-  const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-  const m = src.match(/const TEMPLATES = \[[\s\S]*?\n\];/);
-  ok(!!m, '能找到 TEMPLATES 定义');
-  if (m) {
-    const body = m[0];
-    /* 切块：以 "id: 'xxx'" 为界 */
-    const blocks = body.split(/(?=\bid:\s*'[^']*'\s*,)/).slice(1);
-    ok(blocks.length === 8, `TEMPLATES 共 8 条（实得 ${blocks.length}）`);
-    const ids = [], noHier = [], noClu = [], cutoutEdge = [];
-    for (const b of blocks) {
-      const id = (b.match(/\bid:\s*'([^']*)'/) || [])[1] || '?';
-      ids.push(id);
-      /* adv 块 =从 "adv: {" 到其匹配的 "}" */
-      const advM = b.match(/adv:\s*\{([\s\S]*?)\}/);
-      const adv = advM ? advM[1] : '';
-      const postM = b.match(/post:\s*\{([\s\S]*?)\}/);
-      const post = postM ? postM[1] : '';
-      if (!/hierarchical:\s*'/.test(adv)) noHier.push(id);
-      if (!/clustering:\s*'/.test(adv)) noClu.push(id);
-      if (/hierarchical:\s*'cutout'/.test(adv) && /edge:\s*[1-9]/.test(post)) cutoutEdge.push(id);
-    }
-    /* 缺陷①：adv 缺 hierarchical / clustering → 会沿用上一次的选择，同模板结果不可复现 */
-    ok(noHier.length === 0, `每个模板都显式声明 adv.hierarchical（缺失会让层级模式残留：${noHier.join(',') || '无'}）`);
-    ok(noClu.length === 0, `每个模板都显式声明 adv.clustering（缺失会让分区算法残留：${noClu.join(',') || '无'}）`);
-    /* 缺陷②：cutout 模板写 post.edge 是死配置（cutout 已强制跳过几何后处理） */
-    ok(cutoutEdge.length === 0, `cutout 模板不应写 post.edge（cutout 下已跳过几何后处理）：${cutoutEdge.join(',') || '无'}`);
-    ok(/setCtlValue\('#smoothEdge', tpl\.post\.edge \|\| 0/.test(src), 'applyTemplate 对未写 edge 的模板显式置 0，杜绝滑块残留');
-    ok(ids.includes('line') && !noHier.includes('line'), 'line 模板存在且已声明层级模式');
+  /* v8.0：模板改为「部分引用预设」后，正则切块不再可靠 → 直接求值 TEMPLATES，
+     断言解析后的真实对象（比正则更贴近运行时行为）。 */
+  const src2 = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const tplM = src2.match(/const TEMPLATES = \[[\s\S]*?\n\];/);
+  ok(!!tplM, '能找到 TEMPLATES 定义');
+  if (tplM) {
+    const helpers = (src2.match(/function presetParams\(id\)[\s\S]*?function presetAdv\(id\)[\s\S]*?\n\}/) || [''])[0];
+    ok(!!helpers, '模板参数同源辅助函数 presetParams / presetAdv 存在');
+    const box = {};
+    new Function('exports',
+      [slice('const PRESETS = {', 'const SCHEMA = {'), helpers, tplM[0],
+       'exports.TEMPLATES=TEMPLATES;exports.PRESETS=PRESETS;'].join('\n'))(box);
+    const { TEMPLATES: T, PRESETS: P } = box;
+    const ids = T.map(t => t.id);
+    ok(T.length === 8, `TEMPLATES 共 8 条（实得 ${T.length}）`);
+    ok(JSON.stringify(ids) === JSON.stringify(['daily', 'lean', 'artwork', 'smooth', 'tiny', 'faithful', 'photo', 'line']),
+      '模板 id 与顺序未变：' + ids.join(','));
 
-    /* v7.1.1 模板参数实测寻优：钉死 5 个实测获益模板的层差/去噪；
-       lean/tiny 有意保持（体积优先档，实测层差 32 收益≈0 甚至区域变差） */
-    const pOf = id => { const b = blocks.find(x => (x.match(/\bid:\s*'([^']*)'/) || [])[1] === id);
-      const pm = b.match(/params:\s*\{([\s\S]*?)\}/); return pm ? pm[1] : ''; };
+    /* 缺陷①：adv 必须解析出 clustering / hierarchical（否则会沿用上一次的选择） */
+    const noHier = T.filter(t => !t.adv || !t.adv.hierarchical).map(t => t.id);
+    const noClu = T.filter(t => !t.adv || !t.adv.clustering).map(t => t.id);
+    ok(noHier.length === 0, `每个模板都解析出 adv.hierarchical（缺失：${noHier.join(',') || '无'}）`);
+    ok(noClu.length === 0, `每个模板都解析出 adv.clustering（缺失：${noClu.join(',') || '无'}）`);
+    /* 缺陷②：cutout 模板写 post.edge 是死配置 */
+    const cutoutEdge = T.filter(t => t.adv.hierarchical === 'cutout' && t.post && t.post.edge > 0).map(t => t.id);
+    ok(cutoutEdge.length === 0, `cutout 模板不应写 post.edge（实得：${cutoutEdge.join(',') || '无'}）`);
+    ok(/setCtlValue\('#smoothEdge', tpl\.post\.edge \|\| 0/.test(src2), 'applyTemplate 对未写 edge 的模板显式置 0，杜绝滑块残留');
+
+    /* 实测数值：钉死每个模板实际生效的参数（引用预设的模板同样要等于该值） */
     const EXPECT_TPL = {
       daily:    { filterSpeckle: 10, layerDifference: 32 },
       artwork:  { filterSpeckle: 6,  layerDifference: 32 },
@@ -126,11 +121,33 @@ console.log('\n=== v7.1 模板健壮性（两处实测发现的缺陷）===');
       tiny:     { filterSpeckle: 16, layerDifference: 20 },
       line:     { filterSpeckle: 2,  layerDifference: 16 },
     };
-    for (const id in EXPECT_TPL) {
-      const p = pOf(id), e = EXPECT_TPL[id];
-      ok(new RegExp(`filterSpeckle:\\s*${e.filterSpeckle}\\b`).test(p) && new RegExp(`layerDifference:\\s*${e.layerDifference}\\b`).test(p),
-        `模板 ${id} 参数 = 去噪${e.filterSpeckle}/层差${e.layerDifference}`);
+    for (const id of Object.keys(EXPECT_TPL)) {
+      const t = T.find(x => x.id === id) || { params: {} };
+      const e = EXPECT_TPL[id];
+      ok(t.params.filterSpeckle === e.filterSpeckle && t.params.layerDifference === e.layerDifference,
+        `模板 ${id} 生效参数 = 去噪${t.params.filterSpeckle}/层差${t.params.layerDifference}（期望 ${e.filterSpeckle}/${e.layerDifference}）`);
     }
+
+    /* v8.0 新增：与预设同源的模板必须**始终**等于该预设（改预设不会让模板落后） */
+    const logo = P.vtracer.logo.opts;
+    const synced = ['daily', 'smooth', 'photo'];
+    for (const id of synced) {
+      const t = T.find(x => x.id === id);
+      ok(t.params.filterSpeckle === logo.filterSpeckle
+        && t.params.layerDifference === logo.layerDifference
+        && t.params.cornerThreshold === logo.cornerThreshold
+        && t.params.lengthThreshold === logo.lengthThreshold,
+        `模板 ${id} 与 logo 预设同源（去噪/层差/拐角/细节四项一致）`);
+    }
+    const art = T.find(x => x.id === 'artwork');
+    ok(art.params.filterSpeckle === 6 && art.params.layerDifference === logo.layerDifference,
+      'artwork 仅去噪有意不同（6），其余与 logo 同源');
+    const lean = T.find(x => x.id === 'lean');
+    ok(lean.params.filterSpeckle === 14 && lean.params.layerDifference === 16,
+      'lean 有意保持 14/16（体积优先档，不跟随 logo）');
+    const tiny = T.find(x => x.id === 'tiny');
+    ok(tiny.params.filterSpeckle === 16 && tiny.params.layerDifference === 20,
+      'tiny 有意保持 16/20（v7.2 实测层差 32 零收益）');
   }
 }
 
