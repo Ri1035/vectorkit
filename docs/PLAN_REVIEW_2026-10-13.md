@@ -109,7 +109,7 @@
 | 计划 | 状态 | 取代关系 | 下一步 |
 |---|---|---|---|
 | `PLAN_HIGH_FIDELITY.md`（主线） | 进行中（参数寻优已收口） | — | v7.1/v7.2 已完成全档位与模板参数寻优；下一步待用户指定新目标 |
-| `PLAN_HANDOVER_2026-11-07.md`（交接实验落地） | 阶段 1 完成，阶段 2 待启动 | — | 多图复测后再决定是否做 polygon 精度档 |
+| `PLAN_HANDOVER_2026-11-07.md`（交接实验落地） | 阶段 1、2 完成；阶段 3 不批准（关闭） | — | 剩余待办：`ssimEdge` 退化值修复、共享边对应表（仅当重启 polygon 精度档） |
 | `PLAN_PARALLEL_ENGINE.md`（并列引擎） | **P0/P1/去碎片化已完成**，未接入生产 | 取代 C 方案 | **P2' 保真度优先的容差寻优** |
 | `PLAN_JOINT_OPTIMIZATION.md`（C 方案） | **已废弃** | 被 `PLAN_PARALLEL_ENGINE` 取代 | 仅历史留存 |
 | `OPTIMIZATION_EDGE_SEPARATION.md` | 已完成并并入 CHANGELOG | — | 无 |
@@ -125,14 +125,16 @@
 | 4 | **两套配置系统合并**（新 `PRESETS` ↔ 旧 `TEMPLATES`） | `PLAN_HIGH_FIDELITY` | 属工程整洁性，**与画质无关**，故排最后 |
 | 5 | 轮廓放在**两色等量处**的覆盖率场平滑（VectorCraft Flat-Logo 模式） | `PLAN_PARALLEL_ENGINE` | 仅在 3 之后仍有差距时才启动 |
 | 6 | ~~**几何后处理 / VM 四项能量联合优化**~~ ❌ **已证伪（2026-11-07）** | `PLAN_HANDOVER` | VTracer 输出是像素精确边界，任何非零平滑都降质；零权重对照与不优化逐字节相同 |
-| 7 | **polygon 精度档多图复测**（阶段 2） | `PLAN_HANDOVER` | 单图 33.34 dB 但段数 2.7×、体积 5×；cutout 共享边未验证 → 先复测再决定是否做实验功能 |
+| 7 | ~~**polygon 精度档多图复测**（阶段 2）~~ ❌ **已完成（2026-11-07），结论为不支持** | `PLAN_HANDOVER` | 4 图复测：重拟合四图全败（最差 −2.03 dB）；polygon 原样仅扁平类 +0.4~0.5 dB，纹理类 −2.35 dB；cutout 共享边占比 92%+，撕边实测白缝 +1129 → 不实现 |
 
 > **纪律提醒**：第 3、7 项的结论**必须同时给出客观指标 + 至少一个观感代理**（第五节纪律 5）。
 >
 > **2026-11-07 交接实验**：在 VTracer 输出上做几何平滑/联合优化**已被证伪** ——
 > 不优化 33.34 dB，四组权重 31.69–32.04 dB，零权重对照与不优化逐字节相同；
-> 亚像素联合优化 30.41 dB。结论与证据见 [`PLAN_HANDOVER_2026-11-07.md`](./PLAN_HANDOVER_2026-11-07.md)
-> 与 [`NEGATIVE_RESULTS.md`](./NEGATIVE_RESULTS.md)。**不要重复投入 `refine.js` / `subpx.js` / `subpixel.js`。**
+> 亚像素联合优化 30.41 dB。**阶段 2 多图复测**进一步确认：重拟合四图全败，
+> `polygon` 原样仅对扁平类有效、对纹理/线稿类反而更差。
+> 结论与证据见 [`PLAN_HANDOVER_2026-11-07.md`](./PLAN_HANDOVER_2026-11-07.md)
+> 与 [`NEGATIVE_RESULTS.md`](./NEGATIVE_RESULTS.md)。**不要重复投入 `refine.js` / `subpx.js` / `subpixel.js` / `polygon` 重拟合。**
 >
 > **观感指标现状（v6.8）**：三个指标均已实现且方向经合成图验证，但**在 bc 图上区分度偏弱**
 > （jag 7%、ssimEdge 3%、speck 15% 跨度）→ 只能用于**同批配置的相对比较**，不可设绝对阈值。
