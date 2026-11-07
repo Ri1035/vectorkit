@@ -581,7 +581,7 @@ function collectPreOptions() {
   const denoise = $(PRE_UI.denoise).checked;
   const contrastDenoise = !!(PRE_UI.cdenoise && $(PRE_UI.cdenoise) && $(PRE_UI.cdenoise).checked);
   const smooth = parseInt($(PRE_UI.smooth).value, 10) || 0;
-  /* 描摹分辨率：'auto' = 旧行为（短边 <800px 自动 ×2）；'2'/'3' = 强制倍数；'0' = 关闭 */
+  /* 描摹分辨率：'auto' = 预算内一律 ×2（v8.8）；'2'/'3' = 强制倍数；'0' = 关闭 */
   const resEl = $(PRE_UI.res);
   const resRaw = resEl ? resEl.value : 'auto';
   const upsample = resRaw === 'auto';
@@ -598,7 +598,7 @@ function updatePreSummary() {
   const parts = [o.maxSide ? o.maxSide + 'px' : '原始尺寸'];
   if (o.contrastDenoise) parts.push('对比度降噪');
   if (o.upsampleFactor >= 2) parts.push('描摹 ×' + o.upsampleFactor);
-  else if (o.upsample) parts.push('描摹 自动');
+  else if (o.upsample) parts.push('描摹 自动×2');
   if (o.denoise) parts.push('去噪');
   if (o.smooth) parts.push('平滑' + o.smooth);
   parts.push(o.maxColors >= 2 ? o.maxColors + ' 色' : '不限色');

@@ -768,14 +768,15 @@ export function preprocess(src, opts = {}) {
   }
 
   /* 描摹分辨率：upsampleFactor ≥ 2 → 强制按该倍数上采样（对任意尺寸生效）；
-     否则退回旧行为：upsample=true 且短边 <800px 时自动 2×。
-     实测：×2 让 Bon Cho(1280²) MSE −53%、PSNR +3.3dB；小图(512×384) ×3 最佳（MSE 76→30）。
+     否则 upsample=true（面板「自动」）→ **预算内一律 ×2**。
+     v8.8：旧行为只在短边 <800px 时自动 ×2，导致 1280² 等常见插画错失增益；
+     实测 bc 1280²：1280 描摹 33.31 / 白缝 2212，×2 描摹 34.80 / 白缝 1430（+1.49 dB）。
      ⚠️ 安全上限：实测 3840²（14.7M 像素）时引擎输出**退化**（大面积白色覆盖内容），
      2560²（6.55M）正常；故按像素预算自动降倍，并把降倍原因写入 steps（不静默）。 */
   const MAX_UP_PIXELS = 8000000;
   let upF = upsampleFactor >= 2
     ? upsampleFactor
-    : (upsample && Math.min(img.width, img.height) < 800 ? 2 : 0);
+    : (upsample ? 2 : 0);
   let upNote = '';
   while (upF > 2 && img.width * upF * img.height * upF > MAX_UP_PIXELS) upF--;
   if (upF === 2 && img.width * 2 * img.height * 2 > MAX_UP_PIXELS) {

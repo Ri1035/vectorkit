@@ -192,6 +192,12 @@ for (const id of ['preRes', 'preSize', 'preDenoise', 'preSmooth', 'preColors']) 
   ok(html.includes('id="' + id + '"'), '#' + id + ' 存在');
 }
 ok(!html.includes('id="preUpsample"'), '旧「小图自动上采样」复选框不得残留');
+{
+  /* v8.8：自动描摹 = 预算内一律 ×2（旧行为只在短边 <800 时生效，1280² 插画会错失增益） */
+  const pre = fs.readFileSync(path.join(root, 'preprocess.js'), 'utf8');
+  ok(/\(upsample \? 2 : 0\)/.test(pre), '自动描摹 = 预算内一律 ×2');
+  ok(/MAX_UP_PIXELS = 8000000/.test(pre), '上采样像素预算保护仍在（>8M 自动降级）');
+}
 
 console.log('\n=== 观感指标方向验证（纪律：指标先验方向再用）===');
 { /* perceptual.js 的三个指标必须保持方向正确；一旦被改坏，立即拦下 */
